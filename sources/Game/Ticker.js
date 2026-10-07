@@ -30,8 +30,11 @@ export class Ticker
         // The renderer gives us milliseconds
         const elapsedSeconds = elapsed / 1000
 
-        // If the tab was hidden for 10 seconds we do not want a 10 second step
-        this.delta = Math.min(elapsedSeconds - this.elapsed, this.maxDelta)
+        // Keep the frame time between a tiny minimum and `maxDelta`:
+        //   too big: the tab was hidden for 10 seconds, we do not want a 10 second step
+        //   too small or NEGATIVE: the browser's clock jumped backwards. A negative time step
+        //   makes the physics engine crash and stay locked, so it must never reach it.
+        this.delta = Math.min(Math.max(elapsedSeconds - this.elapsed, 0.0001), this.maxDelta)
         this.elapsed = elapsedSeconds
 
         this.deltaScaled = this.delta * this.scale

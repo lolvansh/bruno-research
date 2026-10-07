@@ -46,6 +46,7 @@ export class Floor
         this.material.colorNode = terrain.floorColorNode()
 
         this.mesh = new THREE.Mesh(geometry, this.material)
+        this.mesh.receiveShadow = true // The ground catches the shadows of everything on it
         this.game.scene.add(this.mesh)
     }
 

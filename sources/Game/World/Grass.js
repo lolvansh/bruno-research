@@ -165,6 +165,7 @@ export class Grass
     {
         this.mesh = new THREE.Mesh(this.geometry, this.material)
         this.mesh.frustumCulled = false // The geometry's real position is decided in the shader
+        this.mesh.receiveShadow = true // Blades catch shadows, so a tree's shadow darkens the grass too
         this.game.scene.add(this.mesh)
     }
 

@@ -42,8 +42,11 @@ export class Objects
             // updateMaterials: false  = the model's materials are already ours
             // parent: null            = do NOT add it to the scene. Used for instancing: the model is
             //                           just an invisible position holder, an InstancedGroup draws it.
+            // castShadow / receiveShadow: does it throw a shadow? does it catch the shadows of others?
             const visualDescription = {
                 updateMaterials: true,
+                castShadow: true,
+                receiveShadow: true,
                 parent: this.game.scene,
                 ..._visualDescription
             }
@@ -53,6 +56,16 @@ export class Objects
 
             if(visualDescription.updateMaterials)
                 this.game.materials.updateObject(visual.object3D)
+
+            // These are properties of each MESH, so set them on every mesh inside the model
+            visual.object3D.traverse((child) =>
+            {
+                if(child.isMesh)
+                {
+                    child.castShadow = visualDescription.castShadow
+                    child.receiveShadow = visualDescription.receiveShadow
+                }
+            })
 
             if(visualDescription.parent !== null)
                 visualDescription.parent.add(visual.object3D)

@@ -21,6 +21,9 @@ export class Rendering
         this.renderer.setSize(this.game.viewport.width, this.game.viewport.height)
         this.renderer.setPixelRatio(this.game.viewport.pixelRatio)
 
+        // Shadows cost a second drawing of the world, so they are off until asked for
+        this.renderer.shadowMap.enabled = true
+
         // The renderer drives the loop: it calls us once per screen refresh,
         // and we pass that on to the ticker.
         this.renderer.setAnimationLoop((elapsedTime) => { this.game.ticker.update(elapsedTime) })

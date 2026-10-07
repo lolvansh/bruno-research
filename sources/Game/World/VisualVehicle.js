@@ -77,6 +77,19 @@ export class VisualVehicle
         // Rotate yaw first, then pitch, then roll: the natural order for a car
         this.parts.chassis.rotation.reorder('YXZ')
 
+        // The car throws and catches shadows. (Set on every mesh of the chassis and the wheel.)
+        for(const part of [ this.parts.chassis, this.parts.wheelContainer ])
+        {
+            part.traverse((child) =>
+            {
+                if(child.isMesh)
+                {
+                    child.castShadow = true
+                    child.receiveShadow = true
+                }
+            })
+        }
+
         // Swap the model's materials for ours (palette, paint...), and add it to the world
         this.game.materials.updateObject(this.parts.chassis)
         this.game.materials.updateObject(this.parts.wheelContainer)

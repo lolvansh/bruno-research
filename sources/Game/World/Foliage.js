@@ -127,6 +127,10 @@ export class Foliage
         this.material.colorNode = mix(this.colorA, this.colorB, sunFacing)
         this.material.opacityNode = opacity
         this.material.alphaTest = 0.4 // Pixels darker than this are discarded: that is what cuts the leaf shape
+
+        // The SHADOW of a leaf card must be leaf-shaped too, not a square. This tells the
+        // shadow pass which pixels to keep (the same cut as above, without the wobble).
+        this.material.maskShadowNode = texture(this.game.resources.foliageTexture, uv()).r.greaterThan(0.4)
     }
 
     setInstancedMesh()
@@ -136,6 +140,11 @@ export class Foliage
 
         this.mesh = new THREE.InstancedMesh(this.geometry, this.material, this.references.length)
         this.mesh.frustumCulled = false
+
+        // Leaves throw shadows. They do not RECEIVE them: each card would shadow its neighbours
+        // in the same cluster and the leaves would look speckled. (Bruno offsets the lookup to avoid this.)
+        this.mesh.castShadow = true
+        this.mesh.receiveShadow = false
 
         this.references.forEach((reference, i) =>
         {

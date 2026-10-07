@@ -65,6 +65,8 @@ export class Trees
         this.bodies = new THREE.InstancedMesh(this.modelParts.body.geometry, this.modelParts.body.material, this.references.length)
         this.bodies.instanceMatrix.setUsage(THREE.StaticDrawUsage)
         this.bodies.frustumCulled = false
+        this.bodies.castShadow = true
+        this.bodies.receiveShadow = true
 
         this.references.forEach((reference, i) =>
         {

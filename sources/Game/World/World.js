@@ -54,6 +54,16 @@ export class World
         base.scale.set(1, 1, 1)
         this.game.materials.updateObject(base)
 
+        // InstancedGroup copies these flags onto the instanced meshes it creates
+        base.traverse((child) =>
+        {
+            if(child.isMesh)
+            {
+                child.castShadow = true
+                child.receiveShadow = true
+            }
+        })
+
         const objects = references.map((reference, i) =>
         {
             const [ x, z, yaw ] = placements[i]
