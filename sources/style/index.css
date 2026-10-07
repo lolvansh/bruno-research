@@ -1,0 +1,19 @@
+html,
+body
+{
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #1b2a41;
+}
+
+.game
+{
+    position: fixed;
+    inset: 0;
+}
+
+.js-canvas
+{
+    display: block;
+}
