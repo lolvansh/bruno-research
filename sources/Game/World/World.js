@@ -7,29 +7,49 @@ export class World
     {
         this.game = Game.getInstance()
 
-        this.setTestCube()
+        this.setTestGrid()
+        this.setTestCar()
     }
 
-    // A spinning cube, only to prove the loop works. It will be deleted.
-    setTestCube()
+    // TEMPORARY: a grid so you can SEE the camera moving over something
+    setTestGrid()
     {
-        this.cube = new THREE.Mesh(
-            new THREE.BoxGeometry(1, 1, 1),
-            new THREE.MeshNormalMaterial() // Colours by face direction, needs no light
-        )
-        this.game.scene.add(this.cube)
+        const grid = new THREE.GridHelper(80, 80, '#ffffff', '#4a5f80')
+        this.game.scene.add(grid)
+    }
 
-        // Priority 10: after physics and input (later steps), before drawing (998)
+    // TEMPORARY: a box the size of Bruno's car body, driving in a circle.
+    // It stands in for the player until step 7.
+    setTestCar()
+    {
+        this.testCar = new THREE.Mesh(
+            new THREE.BoxGeometry(2.6, 0.8, 1.7),
+            new THREE.MeshNormalMaterial()
+        )
+        this.testCar.position.y = 0.4
+        this.game.scene.add(this.testCar)
+
+        this.angle = 0
+
+        // Priority 6: the player moves BEFORE the camera (priority 7).
+        // Swap these numbers and the camera would lag one frame behind.
         this.game.ticker.events.on('tick', () =>
         {
             this.update()
-        }, 10)
+        }, 6)
     }
 
     update()
     {
-        // Multiply by delta so the speed is the same on 60 Hz and 144 Hz screens
-        this.cube.rotation.y += this.game.ticker.delta * 1
-        this.cube.rotation.x += this.game.ticker.delta * 0.5
+        // Drive in a circle of radius 10
+        this.angle += this.game.ticker.delta * 0.4
+        this.testCar.position.x = Math.cos(this.angle) * 10
+        this.testCar.position.z = Math.sin(this.angle) * 10
+
+        // Face along the direction of travel (the car's long side is its X axis)
+        this.testCar.rotation.y = - (this.angle + Math.PI * 0.5)
+
+        // Tell the camera what to follow
+        this.game.view.focusPoint.trackedPosition.copy(this.testCar.position)
     }
 }

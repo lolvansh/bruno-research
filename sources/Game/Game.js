@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu'
 
 import { Ticker } from './Ticker.js'
 import { Viewport } from './Viewport.js'
+import { View } from './View.js'
 import { Rendering } from './Rendering.js'
 import { World } from './World/World.js'
 
@@ -37,15 +38,8 @@ export class Game
         this.ticker = new Ticker()
         this.viewport = new Viewport(this.domElement)
 
-        // TEMPORARY camera. Step 3 replaces it with a proper View class.
-        this.camera = new THREE.PerspectiveCamera(40, this.viewport.ratio, 0.1, 200)
-        this.camera.position.set(4, 3, 6)
-        this.camera.lookAt(0, 0, 0)
-        this.viewport.events.on('change', () =>
-        {
-            this.camera.aspect = this.viewport.ratio
-            this.camera.updateProjectionMatrix()
-        })
+        // The camera lives inside View. Needs the scene, ticker and viewport above.
+        this.view = new View()
 
         // The renderer must be ready before anything can be drawn
         this.rendering = new Rendering()

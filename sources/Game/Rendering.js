@@ -51,6 +51,6 @@ export class Rendering
 
     render()
     {
-        this.renderer.render(this.game.scene, this.game.camera)
+        this.renderer.render(this.game.scene, this.game.view.camera)
     }
 }
