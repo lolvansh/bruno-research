@@ -145,7 +145,7 @@ export class VisualVehicle
     setPaints()
     {
         this.paints = {}
-        this.paints.names = [ 'red', 'orange', 'white', 'black' ] // Materials 'redGradient', 'orangeGradient'...
+        this.paints.names = [ 'black', 'red', 'orange', 'white' ] // Materials 'blackGradient', 'redGradient'... The first one is the starting colour.
         this.paints.index = 0
 
         this.paints.changeTo = (name) =>
@@ -165,6 +165,9 @@ export class VisualVehicle
 
             return true
         }
+
+        // Start with the first colour of the list (the model itself is exported with red)
+        this.paints.changeTo(this.paints.names[0])
 
         this.game.inputs.addActions([
             { name: 'paint', categories: [ 'wandering' ], keys: [ 'Keyboard.KeyC' ] },
