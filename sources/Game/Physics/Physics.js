@@ -37,6 +37,7 @@ export class Physics
     //         { shape: 'cylinder', parameters: [ halfHeight, radius ] },
     //         { shape: 'hull',     parameters: [ vertices ] },            // wraps the points in a convex shape
     //         { shape: 'trimesh',  parameters: [ vertices, indices ] },   // the exact triangles
+    //         { shape: 'heightfield', parameters: [ rows, columns, heights, { x, y, z } ] },  // a grid of heights: terrain
     //         // every collider can also have: position: { x, y, z }, quaternion
     //     ]
     // }
@@ -95,6 +96,8 @@ export class Physics
                 colliderDescription = colliderDescription.convexHull(_colliderDescription.parameters[0])
             else if(_colliderDescription.shape === 'trimesh')
                 colliderDescription = colliderDescription.trimesh(_colliderDescription.parameters[0], _colliderDescription.parameters[1])
+            else if(_colliderDescription.shape === 'heightfield')
+                colliderDescription = colliderDescription.heightfield(..._colliderDescription.parameters)
 
             // convexHull() gives back null when the points cannot form a solid shape
             if(!colliderDescription)

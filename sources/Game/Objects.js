@@ -39,11 +39,23 @@ export class Objects
         // Visual
         if(_visualDescription && _visualDescription.model)
         {
-            const visual = {}
-            visual.object3D = _visualDescription.model
+            // updateMaterials: false  = the model's materials are already ours
+            // parent: null            = do NOT add it to the scene. Used for instancing: the model is
+            //                           just an invisible position holder, an InstancedGroup draws it.
+            const visualDescription = {
+                updateMaterials: true,
+                parent: this.game.scene,
+                ..._visualDescription
+            }
 
-            this.game.materials.updateObject(visual.object3D)
-            this.game.scene.add(visual.object3D)
+            const visual = {}
+            visual.object3D = visualDescription.model
+
+            if(visualDescription.updateMaterials)
+                this.game.materials.updateObject(visual.object3D)
+
+            if(visualDescription.parent !== null)
+                visualDescription.parent.add(visual.object3D)
 
             object.visual = visual
         }
@@ -218,6 +230,9 @@ export class Objects
     {
         object.visual.object3D.position.copy(object.physical.body.translation())
         object.visual.object3D.quaternion.copy(object.physical.body.rotation())
+
+        // If this object is drawn by an InstancedGroup, tell it to rewrite this slot
+        object.visual.object3D.needsUpdate = true
     }
 
     update()

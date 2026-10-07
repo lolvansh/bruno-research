@@ -31,6 +31,10 @@ export class VisualVehicle
         this.setWheels()
         this.setPaints()
 
+        // Where the car is ON THE SCREEN (0 to 1 in x and y, origin top-left).
+        // The tree leaves read this to dissolve around the car.
+        this.screenPosition = new THREE.Vector2(0.5, 0.5)
+
         // Priority 8: after the car moved (5) and the camera got its position (7)
         this.game.ticker.events.on('tick', () =>
         {
@@ -214,5 +218,12 @@ export class VisualVehicle
             if(visualWheel.suspension)
                 visualWheel.suspension.scale.y = Math.abs(visualWheel.container.position.y) - 0.5
         }
+
+        // Screen position: project the car's 3D position through the camera
+        const vector = new THREE.Vector3().copy(physicalVehicle.position)
+        vector.project(this.game.view.camera) // Now x and y run from -1 to 1, y UP
+
+        this.screenPosition.x = vector.x * 0.5 + 0.5
+        this.screenPosition.y = vector.y * - 0.5 + 0.5 // Flip y: screen coordinates run downward
     }
 }

@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu'
+import { uniform } from 'three/tsl'
 import { Game } from './Game.js'
 
 // MINIMAL lighting, enough to make shapes readable.
@@ -20,5 +21,10 @@ export class Lighting
         this.sun = new THREE.DirectionalLight('#fff1d6', 2.5)
         this.sun.position.set(10, 20, 8)
         this.game.scene.add(this.sun)
+
+        // The same sun direction, but available inside shaders (TSL).
+        // The leaves use it: the side facing the sun gets one colour, the other side the other.
+        this.direction = this.sun.position.clone().normalize()
+        this.directionUniform = uniform(this.direction)
     }
 }
