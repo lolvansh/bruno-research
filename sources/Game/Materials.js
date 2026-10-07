@@ -26,24 +26,26 @@ export class Materials
     constructor()
     {
         this.game = Game.getInstance()
-    }
 
-    // Loads the palette image and builds the material that uses it.
-    // (Step 5 moves image loading into a proper ResourcesLoader.)
-    async load()
-    {
-        const texture = await new THREE.TextureLoader().loadAsync('palette.png')
-
-        texture.colorSpace = THREE.SRGBColorSpace // The image holds sRGB colours
-        texture.minFilter = THREE.NearestFilter // Never blend neighbouring swatches...
-        texture.magFilter = THREE.NearestFilter // ...when zoomed out or in
-        texture.generateMipmaps = false // Mipmaps are blurred copies: they would blend swatches too
-
-        this.paletteTexture = texture
+        // The image itself is loaded by ResourcesLoader (see Game.init),
+        // with the right filters already set.
+        this.paletteTexture = this.game.resources.paletteTexture
 
         // Lambert = simple matte lighting. Light hits a face, it gets brighter or darker.
         // That alone gives the faceted, low-poly look.
-        this.palette = new THREE.MeshLambertNodeMaterial({ map: texture })
+        this.palette = new THREE.MeshLambertNodeMaterial({ map: this.paletteTexture })
+    }
+
+    // Models from Blender arrive with their own material, named "palette".
+    // Swap it for ours, so the whole world shares ONE material.
+    // (Bruno does the same in Materials.updateObject, by material name.)
+    updateObject(object)
+    {
+        object.traverse((child) =>
+        {
+            if(child.isMesh && child.material.name === 'palette')
+                child.material = this.palette
+        })
     }
 
     // The UV point at the middle of a swatch. The middle (not the edge) so we never

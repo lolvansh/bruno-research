@@ -9,7 +9,37 @@ export class World
 
         this.setGround()
         this.setTestBlocks()
+        this.setBenches()
         this.setTestCar()
+    }
+
+    // The first REAL model: Bruno's bench, loaded from a GLB file.
+    // The file holds 7 benches at the positions they have in his world.
+    // We take the first one and reuse it three times.
+    setBenches()
+    {
+        const model = this.game.resources.benchesModel.scene
+        const original = model.children.find((child) => child.name.startsWith('benchPhysical'))
+
+        // Swap its material for the shared palette material
+        this.game.materials.updateObject(original)
+
+        const placements = [
+            { position: [ -4, 0.76, 6 ], rotation: 0 },
+            { position: [ 4, 0.76, 6 ], rotation: Math.PI * 0.5 },
+            { position: [ -14, 0.76, 6 ], rotation: Math.PI * 0.25 },
+        ]
+
+        this.benches = []
+
+        for(const placement of placements)
+        {
+            const bench = original.clone() // Same shape, same material, new object
+            bench.position.set(...placement.position)
+            bench.rotation.y = placement.rotation
+            this.game.scene.add(bench)
+            this.benches.push(bench)
+        }
     }
 
     // A box painted with one palette swatch

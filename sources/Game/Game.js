@@ -4,6 +4,8 @@ import { Ticker } from './Ticker.js'
 import { Viewport } from './Viewport.js'
 import { View } from './View.js'
 import { Rendering } from './Rendering.js'
+import { LoadingScreen } from './LoadingScreen.js'
+import { ResourcesLoader } from './ResourcesLoader.js'
 import { Materials } from './Materials.js'
 import { Lighting } from './Lighting.js'
 import { World } from './World/World.js'
@@ -35,6 +37,7 @@ export class Game
         this.canvasElement = this.domElement.querySelector('.js-canvas')
 
         // Core
+        this.loadingScreen = new LoadingScreen()
         this.scene = new THREE.Scene()
         this.scene.background = new THREE.Color('#1b2a41')
         this.ticker = new Ticker()
@@ -47,15 +50,34 @@ export class Game
         this.rendering = new Rendering()
         await this.rendering.setRenderer()
 
-        // Materials need the palette image, so wait for it
+        // Load everything the world needs, moving the loading bar as files arrive
+        this.resourcesLoader = new ResourcesLoader()
+        this.resources = await this.resourcesLoader.load(
+            [
+                [ 'paletteTexture', 'palette.png', 'texture', (resource) =>
+                {
+                    resource.colorSpace = THREE.SRGBColorSpace // The image holds sRGB colours
+                    resource.minFilter = THREE.NearestFilter // Never blend neighbouring swatches...
+                    resource.magFilter = THREE.NearestFilter // ...when zoomed out or in
+                    resource.generateMipmaps = false // Mipmaps are blurred copies: they would blend swatches too
+                } ],
+                [ 'benchesModel', 'benches/benches.glb', 'gltf' ],
+            ],
+            (toLoad, total) =>
+            {
+                this.loadingScreen.setProgress(1 - toLoad / total)
+            }
+        )
+
+        // Now the resources exist, so the systems that use them can be built
         this.materials = new Materials()
-        await this.materials.load()
         this.lighting = new Lighting()
 
         // Content
         this.world = new World()
 
-        // Start drawing
+        // Start drawing, and uncover the game
         this.rendering.start()
+        this.loadingScreen.hide()
     }
 }
