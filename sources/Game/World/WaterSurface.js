@@ -36,7 +36,7 @@ export class WaterSurface
         const waterDepth = terrainData.b.mul(terrain.depthScale).add(water.surfaceElevation)
 
         // Colour: teal where shallow, navy where deep
-        const waterColor = mix(shallowColor, deepColor, smoothstep(0, 0.9, terrainData.b)).toVar()
+        const depthColor = mix(shallowColor, deepColor, smoothstep(0, 0.9, terrainData.b))
 
         // Foam. Two things:
         //  1. a thin solid white line right where the water meets the shore
@@ -48,7 +48,9 @@ export class WaterSurface
             .mul(float(1).sub(smoothstep(0.08, 0.35, waterDepth)))
         const foam = shoreLine.add(bands).clamp(0, 1)
 
-        waterColor.assign(mix(waterColor, vec3(1), foam))
+        // Blend white over the colour where there is foam. (A new value, not an assignment: shader
+        // "assign" only works inside a Fn(), outside one it is silently ignored.)
+        const waterColor = mix(depthColor, vec3(1), foam)
 
         // Opacity: you see through shallow water, deep water is nearly solid. Foam is solid.
         const opacity = mix(0.45, 0.92, smoothstep(0.2, 0.7, terrainData.b)).max(foam)
