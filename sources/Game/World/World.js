@@ -11,11 +11,13 @@ export class World
         this.setTestBlocks()
         this.setBenches()
         this.setTestCar()
+        this.setBoxDropper()
     }
 
     // The first REAL model: Bruno's bench, loaded from a GLB file.
     // The file holds 7 benches at the positions they have in his world.
     // We take the first one and reuse it three times.
+    // (Visual only for now. Making models physical from Blender names is step 8.)
     setBenches()
     {
         const model = this.game.resources.benchesModel.scene
@@ -42,40 +44,69 @@ export class World
         }
     }
 
-    // A box painted with one palette swatch
-    addBlock(size, position, paletteIndex)
+    // A box painted with one palette swatch.
+    // type: 'fixed' (solid, never moves), 'dynamic' (falls and gets pushed), or null (no physics)
+    addBlock(size, position, paletteIndex, type = null, rotation = null)
     {
         const geometry = this.game.materials.paint(new THREE.BoxGeometry(...size), paletteIndex)
         const mesh = new THREE.Mesh(geometry, this.game.materials.palette)
         mesh.position.set(...position)
-        this.game.scene.add(mesh)
+
+        if(type === null)
+        {
+            this.game.scene.add(mesh)
+            return mesh
+        }
+
+        // The physics shape must match the visible one. Rapier takes HALF the size
+        // on each axis (distance from the centre to a face).
+        this.game.objects.add(
+            { model: mesh },
+            {
+                type: type,
+                position: { x: position[0], y: position[1], z: position[2] },
+                rotation: rotation ?? undefined,
+                colliders: [ { shape: 'cuboid', parameters: [ size[0] * 0.5, size[1] * 0.5, size[2] * 0.5 ] } ]
+            }
+        )
 
         return mesh
     }
 
-    // A big flat plane painted with swatch 9 (soft green)
+    // The visible ground (a painted plane) AND the invisible physical ground.
+    // They are separate things that happen to sit in the same place.
     setGround()
     {
+        // Visual: swatch 9 (soft green)
         const geometry = this.game.materials.paint(new THREE.PlaneGeometry(200, 200), 9)
         geometry.rotateX(- Math.PI * 0.5) // Planes stand up by default, lay it flat
 
         this.ground = new THREE.Mesh(geometry, this.game.materials.palette)
         this.game.scene.add(this.ground)
+
+        // Physical: a thick slab whose TOP face is at y = 0. No mesh, so `visual` is null.
+        this.game.objects.add(
+            null,
+            {
+                type: 'fixed',
+                position: { x: 0, y: - 1, z: 0 },
+                colliders: [ { shape: 'cuboid', parameters: [ 100, 1, 100 ] } ]
+            }
+        )
     }
 
-    // TEMPORARY: a few coloured blocks so the world has landmarks
-    // and you can see the camera moving past things.
+    // TEMPORARY: a few coloured blocks, now solid, so boxes can land on them
     setTestBlocks()
     {
-        this.addBlock([ 4, 2, 4 ], [ -12, 1, -6 ], 1) // cream
-        this.addBlock([ 3, 3, 3 ], [ 14, 1.5, 8 ], 14) // terracotta
-        this.addBlock([ 6, 1.5, 2 ], [ -6, 0.75, 14 ], 3) // sky blue
-        this.addBlock([ 2, 2, 2 ], [ 8, 1, -14 ], 8) // yellow
-        this.addBlock([ 1, 4, 1 ], [ 0, 2, 0 ], 19) // crimson pillar in the middle
+        this.addBlock([ 4, 2, 4 ], [ -12, 1, -6 ], 1, 'fixed') // cream
+        this.addBlock([ 3, 3, 3 ], [ 14, 1.5, 8 ], 14, 'fixed') // terracotta
+        this.addBlock([ 6, 1.5, 2 ], [ -6, 0.75, 14 ], 3, 'fixed') // sky blue
+        this.addBlock([ 2, 2, 2 ], [ 8, 1, -14 ], 8, 'fixed') // yellow
+        this.addBlock([ 1, 4, 1 ], [ 0, 2, 0 ], 19, 'fixed') // crimson pillar in the middle
     }
 
     // TEMPORARY: a box the size of Bruno's car body, driving in a circle.
-    // It stands in for the player until step 7.
+    // It stands in for the player until step 7. Not physical yet: boxes pass through it.
     setTestCar()
     {
         this.testCar = this.addBlock([ 2.6, 0.8, 1.7 ], [ 0, 0.4, 0 ], 16) // red
@@ -87,6 +118,33 @@ export class World
         {
             this.update()
         }, 6)
+    }
+
+    // TEMPORARY: rain boxes on the world so you can watch the physics work.
+    setBoxDropper()
+    {
+        this.dropped = 0
+        this.maxDropped = 40
+        this.dropTimer = 0
+        this.dropPalette = [ 1, 3, 8, 14, 16, 18, 20, 21 ] // swatches to pick from
+    }
+
+    dropBox()
+    {
+        const size = 0.8 + Math.random() * 0.6
+
+        // A random starting tilt, so they land messily
+        const rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random() * 3, Math.random() * 3, Math.random() * 3))
+
+        this.addBlock(
+            [ size, size, size ],
+            [ (Math.random() - 0.5) * 16, 8 + Math.random() * 4, (Math.random() - 0.5) * 16 ],
+            this.dropPalette[Math.floor(Math.random() * this.dropPalette.length)],
+            'dynamic',
+            rotation
+        )
+
+        this.dropped++
     }
 
     update()
@@ -101,5 +159,13 @@ export class World
 
         // Tell the camera what to follow
         this.game.view.focusPoint.trackedPosition.copy(this.testCar.position)
+
+        // One new box every half second, up to the limit
+        this.dropTimer += this.game.ticker.delta
+        if(this.dropTimer > 0.5 && this.dropped < this.maxDropped)
+        {
+            this.dropTimer = 0
+            this.dropBox()
+        }
     }
 }

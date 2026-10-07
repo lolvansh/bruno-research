@@ -7,6 +7,9 @@ import { Rendering } from './Rendering.js'
 import { LoadingScreen } from './LoadingScreen.js'
 import { ResourcesLoader } from './ResourcesLoader.js'
 import { Materials } from './Materials.js'
+import { Physics } from './Physics/Physics.js'
+import { PhysicsWireframe } from './Physics/PhysicsWireframe.js'
+import { Objects } from './Objects.js'
 import { Lighting } from './Lighting.js'
 import { World } from './World/World.js'
 
@@ -50,9 +53,13 @@ export class Game
         this.rendering = new Rendering()
         await this.rendering.setRenderer()
 
+        // Rapier is a big WebAssembly program. Start fetching it now, in parallel
+        // with the files below (that is why it is a dynamic import, not a top import).
+        const rapierPromise = import('@dimforge/rapier3d')
+
         // Load everything the world needs, moving the loading bar as files arrive
         this.resourcesLoader = new ResourcesLoader()
-        this.resources = await this.resourcesLoader.load(
+        const resourcesPromise = this.resourcesLoader.load(
             [
                 [ 'paletteTexture', 'palette.png', 'texture', (resource) =>
                 {
@@ -69,9 +76,17 @@ export class Game
             }
         )
 
-        // Now the resources exist, so the systems that use them can be built
+        // Wait for both: the files AND the physics engine
+        const [ resources, RAPIER ] = await Promise.all([ resourcesPromise, rapierPromise ])
+        this.resources = resources
+        this.RAPIER = RAPIER
+
+        // Now everything exists, so the systems that use them can be built
         this.materials = new Materials()
         this.lighting = new Lighting()
+        this.physics = new Physics() // Priority 3
+        this.wireframe = new PhysicsWireframe() // Priority 4
+        this.objects = new Objects() // Priority 4
 
         // Content
         this.world = new World()
