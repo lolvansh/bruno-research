@@ -96,6 +96,8 @@ export class Game
                 [ 'birchTreesVisualModel', 'birchTrees/birchTreesVisual.glb', 'gltf' ],
                 [ 'oakTreesVisualModel', 'oakTrees/oakTreesVisual.glb', 'gltf' ],
                 [ 'cherryTreesVisualModel', 'cherryTrees/cherryTreesVisual.glb', 'gltf' ],
+                [ 'cableBridgeModel', 'cableBridge/cableBridge.glb', 'gltf' ],
+                [ 'landmarksModel', 'landmarks/landmarks.glb', 'gltf' ],
                 // The Thar by default. Add #car=sedan to the address to load vehicle/sedan.glb instead.
                 [ 'vehicleModel', `vehicle/${(location.hash.match(/car=([\w-]+)/i) ?? [ null, 'thar' ])[1]}.glb`, 'gltf' ],
             ],

@@ -31,7 +31,7 @@ export class Terrain
         // Where the island is, and what is on it
         this.island = { x: 6, z: 10 }
         this.ponds = [
-            { x: - 26, z: - 18, radius: 8 },
+            { x: - 26, z: - 18, radius: 4 }, // The bridge crosses this one, so it is small
             { x: 44, z: 40, radius: 6 },
         ]
         this.pathAngles = [ - 0.5, 1.9, 3.7 ] // Directions the three paths leave the plaza (radians)

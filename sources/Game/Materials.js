@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu'
-import { color, mix, uv, vec3, vec4, luminance, positionWorld, smoothstep, float } from 'three/tsl'
+import { color, mix, uv, vec2, vec3, vec4, luminance, positionWorld, smoothstep, float, uniform, step, screenUV, screenSize, cameraPosition } from 'three/tsl'
 import { Game } from './Game.js'
 
 // Adapted from Bruno Simon's folio-2025 Materials.js (MIT), see LICENSE-THIRD-PARTY.
@@ -37,6 +37,70 @@ export class Materials
 
         this.setPalette()
         this.setNamedMaterials()
+        this.setSeeThrough()
+    }
+
+    // THE CUT-AWAY. The camera angle is fixed, so a tall building (or a bridge cable) can end up between
+    // the camera and the car and hide it. Bruno's leaves dissolve around the car on the screen; we do the
+    // same for big solid things, with one extra rule: only the parts that are CLOSER to the camera than
+    // the car get a hole (a wall behind the car stays whole).
+    //
+    // 'paletteSeeThrough' is the normal palette material plus that hole. World.js gives it to the
+    // landmarks and the bridge.
+    setSeeThrough()
+    {
+        this.seeThrough = {
+            carScreen: uniform(new THREE.Vector2(0.5, 0.5)), // The car on the screen (0 to 1)
+            edgeMin: uniform(0.1),                            // Inside this screen distance: fully cut away
+            edgeMax: uniform(0.5),                            // Beyond this: solid
+            carDistance: uniform(20),                         // How far the car is from the camera, in world units
+        }
+
+        const { carScreen, edgeMin, edgeMax, carDistance } = this.seeThrough
+
+        // Distance on screen from this pixel to the car (corrected for the shape of the window)
+        const toCar = screenUV.sub(carScreen).mul(vec2(screenSize.x.div(screenSize.y), 1))
+        const hole = float(1).sub(smoothstep(edgeMin, edgeMax, toCar.length()))
+
+        // 1 if this pixel is clearly nearer to the camera than the car, else 0
+        const inFront = step(positionWorld.sub(cameraPosition).length().add(1), carDistance)
+
+        const material = new THREE.MeshLambertNodeMaterial({ map: this.paletteTexture })
+        material.opacityNode = float(1).sub(hole.mul(inFront))
+        material.alphaTest = 0.5 // Pixels with less than half opacity are thrown away: that is the hole
+        material.maskShadowNode = float(1).greaterThan(0.5) // The shadow stays whole, only the picture has a hole
+        this.save('paletteSeeThrough', material)
+
+        // Priority 9: after the camera (7) and the car's screen position (8) are known
+        this.game.ticker.events.on('tick', () =>
+        {
+            const vehicle = this.game.world?.visualVehicle
+            const physicalVehicle = this.game.physicalVehicle
+
+            if(!vehicle || !physicalVehicle)
+                return
+
+            carScreen.value.copy(vehicle.screenPosition)
+
+            // The hole keeps its size on screen when you zoom, like the leaves do
+            const radius = this.game.view.spherical.radius.current
+            edgeMin.value = 3 / radius
+            edgeMax.value = 8 / radius
+
+            carDistance.value = this.game.view.camera.position.distanceTo(physicalVehicle.position)
+        }, 9)
+    }
+
+    // Give a loaded model the cut-away version of our palette material
+    makeSeeThrough(object)
+    {
+        const material = this.list.get('paletteSeeThrough')
+
+        object.traverse((child) =>
+        {
+            if(child.isMesh && child.material === this.palette)
+                child.material = material
+        })
     }
 
     setPalette()

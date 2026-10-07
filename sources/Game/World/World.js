@@ -16,11 +16,16 @@ export class World
     {
         this.game = Game.getInstance()
 
+        // Circles where no trees may grow (landmarks and the bridge fill this in)
+        this.keepClear = [ { x: - 26, z: - 18, radius: 14 } ]
+
         this.setFloor()
         this.setTestBlocks()
         this.setBenches()
         this.setFences()
         this.setNamedShapes()
+        this.setCableBridge()
+        this.setLandmarks()
         this.setVehicle()
         this.setWater()
         this.setTrees()
@@ -141,7 +146,11 @@ export class World
         {
             const [ paving, grass, depth ] = terrain.sample(x, z)
 
-            return depth < 0.01 && paving < 0.1 && grass > minGrass
+            if(depth >= 0.01 || paving >= 0.1 || grass <= minGrass)
+                return false
+
+            // Keep clear of the landmarks and the bridge
+            return !this.keepClear.some((zone) => Math.hypot(zone.x - x, zone.z - z) < zone.radius)
         }
 
         // 1. Choose the grove centres: random spots on very grassy land, not too close together
@@ -315,6 +324,79 @@ export class World
             { name: 'hull_rock', scale: [ 1, 1, 1 ], geometry: new THREE.DodecahedronGeometry(1.2) },
         ])
         objects.addFromModel(rock, {}, { position: new THREE.Vector3(- 14, 3, 20), rotation: identity(), mass: 0.3 })
+    }
+
+    // Surat's Cable Bridge (a toy version, made by resources/make_cable_bridge.py).
+    // The model is ONE node named "cableBridgePhysical" with box and hull children: the same
+    // naming convention as the benches, so addFromModel builds the physics from the names.
+    // It crosses the pond to the north-west, with the road running along the pond's edge direction.
+    setCableBridge()
+    {
+        const model = this.game.resources.cableBridgeModel.scene.children.find((child) => child.name.startsWith('cableBridgePhysical'))
+
+        // The model's own x axis is the road. Turn it to run across the pond (pond centre: -26, -18).
+        const angle = Math.atan2(28, 32) + Math.PI * 0.5
+        const rotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), - angle)
+
+        this.cableBridge = this.game.objects.addFromModel(model, {}, {
+            position: new THREE.Vector3(- 26, 0, - 18),
+            rotation: rotation,
+            friction: 0.7
+        })
+
+        // The cables and pylons dissolve around the car when they are between it and the camera
+        this.game.materials.makeSeeThrough(this.cableBridge.visual.object3D)
+    }
+
+    // MINI SURAT. The landmarks all live in one file (landmarks.glb, made by resources/make_landmarks.py).
+    // Each is a node named "<name>Physical" with invisible box/tube/ball children: the same naming
+    // convention as the benches and the bridge, so addFromModel builds the physics from the names.
+    //
+    // Where each one stands: a spot on dry land that the terrain map confirmed (x, z), and which way
+    // its FRONT (+X in the model) points. 'inland' = towards the middle of the island.
+    // radius = how far from its middle we keep trees away.
+    setLandmarks()
+    {
+        const nodes = this.game.resources.landmarksModel.scene.children
+        const centre = this.game.terrain.island
+
+        const places = [
+            { name: 'vrSurat',            x: 36,    z: 14,    radius: 6 },  // Vesu / Piplod: the big mall
+            { name: 'rahulRajMall',       x: 24,    z: 32,    radius: 5 },  // Piplod: the tall glass tower
+            { name: 'athwaGate',          x: 16,    z: 30,    radius: 7 },  // Athwa: drive through the arch
+            { name: 'scienceCentre',      x: -16,   z: 32,    radius: 6 },  // City Light: the dome
+            { name: 'dumasBeach',         x: 22.9,  z: -34.9, radius: 7 },  // Dumas: sign, umbrellas, lifeguard tower
+            { name: 'dariyaGaneshTemple', x: 1.3,   z: -23.7, radius: 5 },  // Dumas: the seaside temple
+        ]
+
+        this.landmarks = {}
+
+        for(const place of places)
+        {
+            const model = nodes.find((node) => node.name.startsWith(`${place.name}Physical`))
+
+            if(!model)
+            {
+                console.warn(`World: landmark "${place.name}" is not in landmarks.glb`)
+                continue
+            }
+
+            // Turn the model so its front (+X) looks at the middle of the island.
+            // (Rotating by "yaw" around the up axis turns +X towards (cos yaw, -sin yaw).)
+            const yaw = Math.atan2(centre.z - place.z, centre.x - place.x) * - 1
+            const rotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw)
+
+            this.landmarks[place.name] = this.game.objects.addFromModel(model, {}, {
+                position: new THREE.Vector3(place.x, 0, place.z),
+                rotation: rotation,
+                friction: 0.7
+            })
+
+            // Tall things dissolve around the car when they stand between it and the camera
+            this.game.materials.makeSeeThrough(this.landmarks[place.name].visual.object3D)
+
+            this.keepClear.push({ x: place.x, z: place.z, radius: place.radius })
+        }
     }
 
     // A box painted with one palette swatch.
