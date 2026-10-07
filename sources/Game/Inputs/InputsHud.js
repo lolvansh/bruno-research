@@ -62,7 +62,7 @@ export class InputsHud
         let numbers = ''
 
         if(player)
-            numbers = `<br>accelerating ${player.accelerating.toFixed(1)}<br>steering ${player.steering.toFixed(1)}<br>braking ${player.braking.toFixed(1)}`
+            numbers = `<br>accelerating ${player.accelerating.toFixed(1)}<br>steering ${player.steering.toFixed(1)}<br>braking ${player.braking.toFixed(1)}<br>boosting ${player.boosting} · suspensions ${player.suspensions.join(' ')}`
 
         // And what the car is doing about it
         const vehicle = this.game.physicalVehicle

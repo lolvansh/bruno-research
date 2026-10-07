@@ -1,9 +1,10 @@
 import * as THREE from 'three/webgpu'
 import { Game } from '../Game.js'
+import { Trails } from '../Trails.js'
 
 // Adapted from Bruno Simon's folio-2025 VisualVehicle.js (MIT), see LICENSE-THIRD-PARTY.
-// Left out for now: ground tracks, blinkers, brake lights, antenna, boost trails
-// and glow, and paint choices.
+// Left out for now: ground tracks, blinkers, brake lights and antenna. In: paint choices
+// and the boost effect (glowing trails behind the car, glowing rims).
 //
 // The car you SEE. It has no physics of its own: every frame it copies what
 // PhysicsVehicle did (position, rotation, spring lengths, steering) onto the
@@ -30,6 +31,7 @@ export class VisualVehicle
         this.setParts()
         this.setWheels()
         this.setPaints()
+        this.setBoost()
 
         // Where the car is ON THE SCREEN (0 to 1 in x and y, origin top-left).
         // The tree leaves read this to dissolve around the car.
@@ -156,10 +158,12 @@ export class VisualVehicle
                 return false
 
             this.parts.bodyPainted.material = material
+            this.paints.material = material
 
+            // (While the boost glow is on, the rims keep glowing: update() puts the paint back after)
             for(const wheel of this.wheels.items)
             {
-                if(wheel.painted)
+                if(wheel.painted && !this.boost?.glowing)
                     wheel.painted.material = material
             }
 
@@ -181,6 +185,34 @@ export class VisualVehicle
             this.paints.index = (this.paints.index + 1) % this.paints.names.length
             this.paints.changeTo(this.paints.names[this.paints.index])
         })
+    }
+
+    // THE BOOST EFFECT (Shift). Two glowing ribbons stream from the back, and the rims glow purple.
+    // The physics side of boost (more engine force, higher top speed) is in PhysicsVehicle.
+    setBoost()
+    {
+        this.boost = {}
+        this.boost.mix = 0 // 0 = off, 1 = fully on. It glides, so the glow fades in and out.
+        this.boost.speed = 1.2
+        this.boost.glowing = false
+        this.boost.glowMaterial = this.game.materials.list.get('emissivePurpleRadialGradient')
+
+        this.boost.trails = new Trails()
+        this.boost.items = []
+
+        // Where the ribbons start: two points under the back bumper, fixed to the car
+        for(const z of [ - 0.55, 0.55 ])
+        {
+            const reference = new THREE.Object3D()
+            reference.position.set(- 1.75, - 0.55, z)
+            this.parts.chassis.add(reference)
+
+            const trail = this.boost.trails.create()
+            this.parts.chassis.updateMatrixWorld(true)
+            reference.getWorldPosition(trail.position)
+
+            this.boost.items.push({ reference, trail })
+        }
     }
 
     update()
@@ -233,6 +265,35 @@ export class VisualVehicle
             // Stretch the strut so it still reaches the wheel
             if(visualWheel.suspension)
                 visualWheel.suspension.scale.y = Math.abs(visualWheel.container.position.y) - 0.5
+        }
+
+        // Boost: the ribbons only show while going forward with Shift held and the pedal down
+        const player = this.game.player
+        const trailAlpha = physicalVehicle.goingForward && player.boosting && player.accelerating > 0 ? 1 : 0
+
+        this.parts.chassis.updateMatrixWorld(true)
+
+        for(const { reference, trail } of this.boost.items)
+        {
+            reference.getWorldPosition(trail.position)
+            trail.alpha = trailAlpha
+        }
+
+        // Rims glow while boost is on (they swap back to the paint when it fades)
+        this.boost.mix += (player.boosting ? 1 : - 1) * deltaScaled * this.boost.speed
+        this.boost.mix = THREE.MathUtils.clamp(this.boost.mix, 0, 1)
+
+        const glowing = this.boost.mix > 0.35
+
+        if(glowing !== this.boost.glowing && this.boost.glowMaterial)
+        {
+            this.boost.glowing = glowing
+
+            for(const wheel of this.wheels.items)
+            {
+                if(wheel.painted)
+                    wheel.painted.material = glowing ? this.boost.glowMaterial : this.paints.material
+            }
         }
 
         // Screen position: project the car's 3D position through the camera

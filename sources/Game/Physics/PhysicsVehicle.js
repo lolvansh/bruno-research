@@ -1,10 +1,11 @@
 import * as THREE from 'three/webgpu'
 import { Game } from '../Game.js'
+import { Events } from '../Events.js'
 
 // Adapted from Bruno Simon's folio-2025 PhysicsVehicle.js (MIT), see LICENSE-THIRD-PARTY.
-// The numbers are his. Left out for now: boost, the three suspension heights
-// (jump / low-ride), ice, the bumper collider and its collision group, and the
-// flip / stuck / upside-down detectors.
+// The numbers are his. Left out for now: ice, the bumper collider and its collision group,
+// the "stuck" detector and the in-air flip counter. Boost, the three suspension heights
+// (jump / low-ride) and the upside-down detector with its recovery hop are in.
 //
 // A "raycast vehicle". The car is ONE box (the chassis). Each wheel is a ray
 // fired downward from a corner of the box. Where the ray hits the ground, a
@@ -20,15 +21,25 @@ export class PhysicsVehicle
     {
         this.game = Game.getInstance()
 
+        // Other classes listen to these: 'upsideDown' and 'rightSideUp'
+        this.events = new Events()
+
         // Driving feel
         this.steeringAmplitude = 0.5 // Max wheel angle in radians (about 29 degrees)
         this.engineForceAmplitude = 300
+        this.boostMultiplier = 2 // While boosting, the engine pushes 1 + 2 = 3 times harder
         this.topSpeed = 5 // Above this the engine fades out
+        this.topSpeedBoost = 40 // ... and while boosting, only above this
         this.brakeAmplitude = 35
         this.idleBrake = 0.06 // Light braking when you are not pressing anything
         this.reverseBrake = 0.4 // Brake used when you press the opposite direction
-        this.suspensionHeight = 0.88 // Spring rest length. Bruno's "low" setting.
-        this.suspensionStiffness = 20 // Bruno's "low" setting
+
+        // Three settings for the springs. A longer, stiffer spring pushes the car up harder:
+        // all four on 'high' (Space) throws the car into a hop.
+        this.suspensionsHeights = { low: 0.88, mid: 1.23, high: 1.63 }
+        this.suspensionsStiffness = { low: 20, mid: 30, high: 40 }
+        this.suspensionHeight = this.suspensionsHeights.low // The normal rest length
+        this.suspensionStiffness = this.suspensionsStiffness.low
         this.baseDamping = 0.1 // Air resistance on dry land
         this.waterDrag = 1.1 // Extra resistance with all 4 wheels in water
 
@@ -51,6 +62,8 @@ export class PhysicsVehicle
         this.setChassis()
         this.controller = this.game.physics.world.createVehicleController(this.chassis.physical.body)
         this.setWheels()
+        this.setUpsideDown()
+        this.setFlip()
 
         // Priority 2: after the Player read the keys (1), before the physics step (3)
         this.game.ticker.events.on('tick', () =>
@@ -85,6 +98,73 @@ export class PhysicsVehicle
         })
 
         this.chassis.physical = object.physical
+        this.chassis.mass = this.chassis.physical.body.mass() // Impulses are scaled by it, so the hop does not depend on the car's weight
+    }
+
+    // Is the car on its back? `ratio` is 0 when upright, 0.5 on its side, 1 upside down.
+    // Above the threshold it counts as upside down, and tells whoever listens.
+    setUpsideDown()
+    {
+        this.upsideDown = {}
+        this.upsideDown.active = false
+        this.upsideDown.ratio = 0
+        this.upsideDown.threshold = 0.3
+
+        this.upsideDown.test = () =>
+        {
+            // 1 when the car's roof points at the ground, 0 when it points at the sky
+            this.upsideDown.ratio = this.upward.dot(new THREE.Vector3(0, - 1, 0)) * 0.5 + 0.5
+
+            if(this.upsideDown.ratio > this.upsideDown.threshold)
+            {
+                if(!this.upsideDown.active)
+                {
+                    this.upsideDown.active = true
+                    this.events.trigger('upsideDown', [ this.upsideDown.ratio ])
+                }
+            }
+            else if(this.upsideDown.active)
+            {
+                this.upsideDown.active = false
+                this.events.trigger('rightSideUp')
+            }
+        }
+    }
+
+    // The recovery hop: an upward kick plus a twist, so a car on its back or its side rolls over onto its wheels.
+    setFlip()
+    {
+        this.flip = {}
+        this.flip.force = 5
+
+        this.flip.jump = () =>
+        {
+            const up = new THREE.Vector3(0, 1, 0)
+            const sidewardDot = up.dot(this.sideward)
+            const forwardDot = up.dot(this.forward)
+            const upwardDot = up.dot(this.upward)
+
+            const body = this.chassis.physical.body
+
+            // Up
+            body.applyImpulse(new THREE.Vector3(0, 1, 0).multiplyScalar(this.flip.force * this.chassis.mass), true)
+
+            // Twist. Which axis depends on how the car lies:
+            let torque
+            if(Math.abs(upwardDot) > Math.abs(sidewardDot) && Math.abs(upwardDot) > Math.abs(forwardDot))
+            {
+                // On its roof: roll it around its length
+                torque = new THREE.Vector3(0.8 * this.chassis.mass, 0, 0)
+            }
+            else
+            {
+                // On its side: roll it back the way it came
+                torque = new THREE.Vector3(sidewardDot * 0.4 * this.chassis.mass, 0, - forwardDot * 0.8 * this.chassis.mass)
+            }
+
+            torque.applyQuaternion(body.rotation())
+            body.applyTorqueImpulse(torque, true)
+        }
     }
 
     setWheels()
@@ -183,9 +263,10 @@ export class PhysicsVehicle
         const forceScale = (1 / 60) / controllerDelta
 
         // Engine force: pushes all 4 wheels. Beyond topSpeed it fades toward zero,
-        // so the car cannot accelerate forever.
-        const overflowSpeed = Math.max(0, this.speed - this.topSpeed)
-        let engineForce = player.accelerating * this.engineForceAmplitude / (1 + overflowSpeed) * deltaScaled * forceScale
+        // so the car cannot accelerate forever. Boosting pushes harder AND moves the limit up.
+        const topSpeed = THREE.MathUtils.lerp(this.topSpeed, this.topSpeedBoost, player.boosting)
+        const overflowSpeed = Math.max(0, this.speed - topSpeed)
+        let engineForce = player.accelerating * (1 + player.boosting * this.boostMultiplier) * this.engineForceAmplitude / (1 + overflowSpeed) * deltaScaled * forceScale
 
         // Brake: the brake key, or a light idle brake when you press nothing
         let brake = player.braking
@@ -219,6 +300,11 @@ export class PhysicsVehicle
         {
             this.controller.setWheelBrake(i, brake)
             this.controller.setWheelEngineForce(i, engineForce)
+
+            // Each spring has its own setting (see Player.suspensions): 'low', 'mid' or 'high'
+            const state = player.suspensions[i]
+            this.controller.setWheelSuspensionRestLength(i, this.suspensionsHeights[state])
+            this.controller.setWheelSuspensionStiffness(i, this.suspensionsStiffness[state])
         }
 
         // Rapier integrates the wheel springs itself, with this time step. Bruno
@@ -281,5 +367,7 @@ export class PhysicsVehicle
         }
 
         this.waterRatio = inWater / 4
+
+        this.upsideDown.test()
     }
 }
