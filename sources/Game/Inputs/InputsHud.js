@@ -64,6 +64,12 @@ export class InputsHud
         if(player)
             numbers = `<br>accelerating ${player.accelerating.toFixed(1)}<br>steering ${player.steering.toFixed(1)}<br>braking ${player.braking.toFixed(1)}`
 
+        // And what the car is doing about it
+        const vehicle = this.game.physicalVehicle
+
+        if(vehicle)
+            numbers += `<br>speed ${vehicle.speed.toFixed(1)} · wheels on ground ${vehicle.wheels.inContactCount}/4`
+
         this.element.innerHTML = lines.join(' ') + numbers
     }
 }

@@ -59,6 +59,10 @@ export class Physics
         rigidBodyDesc.setLinearDamping(_physicalDescription.linearDamping ?? 0.1)
         rigidBodyDesc.setAngularDamping(_physicalDescription.angularDamping ?? 0.1)
 
+        // A body that can sleep stops being simulated when it rests. The car must never sleep.
+        if(typeof _physicalDescription.canSleep !== 'undefined')
+            rigidBodyDesc.setCanSleep(_physicalDescription.canSleep)
+
         physical.body = this.world.createRigidBody(rigidBodyDesc)
 
         // Colliders
@@ -77,6 +81,19 @@ export class Physics
             if(_colliderDescription.position)
                 colliderDescription = colliderDescription.setTranslation(_colliderDescription.position.x, _colliderDescription.position.y, _colliderDescription.position.z)
 
+            // Density 0.1 is Bruno's value: light things, so a car of mass 2.5 can push boxes around
+            colliderDescription = colliderDescription.setDensity(0.1)
+
+            // Optional: fix the mass instead of letting the shape decide.
+            // centerOfMass: where the weight sits. A LOW one makes the car hard to tip over.
+            if(typeof _colliderDescription.mass !== 'undefined')
+            {
+                if(typeof _colliderDescription.centerOfMass !== 'undefined')
+                    colliderDescription = colliderDescription.setMassProperties(_colliderDescription.mass, _colliderDescription.centerOfMass, { x: 1, y: 1, z: 1 }, { x: 0, y: 0, z: 0, w: 1 })
+                else
+                    colliderDescription = colliderDescription.setMass(_colliderDescription.mass)
+            }
+
             colliderDescription = colliderDescription.setFriction(_physicalDescription.friction ?? _colliderDescription.friction ?? 0.2)
             colliderDescription = colliderDescription.setRestitution(_physicalDescription.restitution ?? _colliderDescription.restitution ?? 0.15)
 
@@ -88,8 +105,8 @@ export class Physics
 
     update()
     {
-        // Advance the simulation by the time since the last frame
-        this.world.timestep = this.game.ticker.delta
+        // Advance the simulation by the time since the last frame, on the GAME clock (2x)
+        this.world.timestep = this.game.ticker.deltaScaled
         this.world.step()
     }
 }

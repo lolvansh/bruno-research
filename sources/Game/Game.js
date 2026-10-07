@@ -9,6 +9,7 @@ import { ResourcesLoader } from './ResourcesLoader.js'
 import { Materials } from './Materials.js'
 import { Physics } from './Physics/Physics.js'
 import { PhysicsWireframe } from './Physics/PhysicsWireframe.js'
+import { PhysicsVehicle } from './Physics/PhysicsVehicle.js'
 import { Objects } from './Objects.js'
 import { Inputs } from './Inputs/Inputs.js'
 import { InputsHud } from './Inputs/InputsHud.js'
@@ -93,7 +94,8 @@ export class Game
         this.physics = new Physics() // Priority 3
         this.wireframe = new PhysicsWireframe() // Priority 4
         this.objects = new Objects() // Priority 4
-        this.player = new Player() // Priority 1
+        this.physicalVehicle = new PhysicsVehicle() // Priority 2 and 5
+        this.player = new Player() // Priority 1 and 6 (needs the vehicle to place it)
         this.inputsHud = new InputsHud() // Priority 20
 
         // Content

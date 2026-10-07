@@ -10,8 +10,14 @@ export class World
         this.setGround()
         this.setTestBlocks()
         this.setBenches()
-        this.setTestCar()
+        this.setTestVehicleVisual()
         this.setBoxDropper()
+
+        // Priority 10: the dropper timer. (Nothing here must run before physics.)
+        this.game.ticker.events.on('tick', () =>
+        {
+            this.update()
+        }, 10)
     }
 
     // The first REAL model: Bruno's bench, loaded from a GLB file.
@@ -95,7 +101,7 @@ export class World
         )
     }
 
-    // TEMPORARY: a few coloured blocks, now solid, so boxes can land on them
+    // TEMPORARY: a few coloured blocks, solid, so you have things to drive around and bump into
     setTestBlocks()
     {
         this.addBlock([ 4, 2, 4 ], [ -12, 1, -6 ], 1, 'fixed') // cream
@@ -105,28 +111,65 @@ export class World
         this.addBlock([ 1, 4, 1 ], [ 0, 2, 0 ], 19, 'fixed') // crimson pillar in the middle
     }
 
-    // TEMPORARY: a box the size of Bruno's car body, driving in a circle.
-    // It stands in for the player until step 7. Not physical yet: boxes pass through it.
-    setTestCar()
+    // TEMPORARY (replaced by the real car model in 7c): a red box for the chassis
+    // and four dark cylinders for the wheels. Every frame it copies what the
+    // physical car is doing, so you can SEE the springs and the steering.
+    setTestVehicleVisual()
     {
-        this.testCar = this.addBlock([ 2.6, 0.8, 1.7 ], [ 0, 0.4, 0 ], 16) // red
+        const materials = this.game.materials
+        const vehicle = this.game.physicalVehicle
 
-        this.angle = 0
+        this.vehicleVisual = new THREE.Group()
 
-        // Priority 6: the player moves BEFORE the camera (priority 7).
+        // Same sizes and offsets as the physical colliders (full size = 2 x half size)
+        const body = new THREE.Mesh(materials.paint(new THREE.BoxGeometry(2.6, 0.8, 1.7), 16), materials.palette)
+        body.position.y = - 0.1
+        const cabin = new THREE.Mesh(materials.paint(new THREE.BoxGeometry(1.0, 0.3, 1.3), 17), materials.palette)
+        cabin.position.y = 0.4
+        this.vehicleVisual.add(body, cabin)
+
+        // Wheels: cylinders lying on their side (axle along Z)
+        this.vehicleWheels = []
+        for(const wheel of vehicle.wheels.items)
+        {
+            const geometry = new THREE.CylinderGeometry(0.4, 0.4, 0.5, 16)
+            geometry.rotateX(Math.PI * 0.5)
+            materials.paint(geometry, 22)
+
+            const mesh = new THREE.Mesh(geometry, materials.palette)
+            this.vehicleVisual.add(mesh)
+            this.vehicleWheels.push(mesh)
+        }
+
+        this.game.scene.add(this.vehicleVisual)
+
+        // Priority 8: after the car has moved (5)
         this.game.ticker.events.on('tick', () =>
         {
-            this.update()
-        }, 6)
+            this.vehicleVisual.position.copy(vehicle.position)
+            this.vehicleVisual.quaternion.copy(vehicle.quaternion)
+
+            for(let i = 0; i < 4; i++)
+            {
+                const wheel = vehicle.wheels.items[i]
+
+                // The wheel hangs `suspensionLength` below its attachment point
+                this.vehicleWheels[i].position.set(wheel.basePosition.x, wheel.basePosition.y - wheel.suspensionLength, wheel.basePosition.z)
+
+                // Front wheels (0 and 1) turn with the steering
+                this.vehicleWheels[i].rotation.y = i < 2 ? vehicle.steer : 0
+            }
+        }, 8)
     }
 
-    // TEMPORARY: rain boxes on the world so you can watch the physics work.
+    // TEMPORARY: rain boxes on the world so you can watch the physics work
+    // and push them around with the car.
     setBoxDropper()
     {
         this.dropped = 0
-        this.maxDropped = 40
+        this.maxDropped = 20
         this.dropTimer = 0
-        this.dropPalette = [ 1, 3, 8, 14, 16, 18, 20, 21 ] // swatches to pick from
+        this.dropPalette = [ 1, 3, 8, 14, 18, 20, 21 ] // swatches to pick from
     }
 
     dropBox()
@@ -149,17 +192,6 @@ export class World
 
     update()
     {
-        // Drive in a circle of radius 10
-        this.angle += this.game.ticker.delta * 0.4
-        this.testCar.position.x = Math.cos(this.angle) * 10
-        this.testCar.position.z = Math.sin(this.angle) * 10
-
-        // Face along the direction of travel (the car's long side is its X axis)
-        this.testCar.rotation.y = - (this.angle + Math.PI * 0.5)
-
-        // Tell the camera what to follow
-        this.game.view.focusPoint.trackedPosition.copy(this.testCar.position)
-
         // One new box every half second, up to the limit
         this.dropTimer += this.game.ticker.delta
         if(this.dropTimer > 0.5 && this.dropped < this.maxDropped)
