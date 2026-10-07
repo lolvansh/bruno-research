@@ -11,6 +11,8 @@ export class World
         this.setGround()
         this.setTestBlocks()
         this.setBenches()
+        this.setFences()
+        this.setNamedShapes()
         this.setVehicle()
         this.setBoxDropper()
 
@@ -27,34 +29,134 @@ export class World
         this.visualVehicle = new VisualVehicle(this.game.resources.vehicleModel.scene)
     }
 
-    // The first REAL model: Bruno's bench, loaded from a GLB file.
-    // The file holds 7 benches at the positions they have in his world.
-    // We take the first one and reuse it three times.
-    // (Visual only for now. Making models physical from Blender names is step 8.)
+    // The first REAL models: Bruno's benches (benches.glb). Each one is a node named
+    // "benchPhysicalDynamic" with two "cuboid" children. Objects.getFromModel reads
+    // those NAMES and builds the colliders, so there are no collision numbers here.
+    // His 7 benches are scattered over his world; we put them where WE want.
     setBenches()
     {
         const model = this.game.resources.benchesModel.scene
-        const original = model.children.find((child) => child.name.startsWith('benchPhysical'))
+        const benches = model.children.filter((child) => child.name.startsWith('benchPhysical'))
 
-        // Swap its material for the shared palette material
-        this.game.materials.updateObject(original)
-
+        // x, z, and which way each one faces (radians)
         const placements = [
-            { position: [ -4, 0.76, 6 ], rotation: 0 },
-            { position: [ 4, 0.76, 6 ], rotation: Math.PI * 0.5 },
-            { position: [ -14, 0.76, 6 ], rotation: Math.PI * 0.25 },
+            [ -4, 6, 0 ], [ 4, 6, Math.PI * 0.5 ], [ -14, 6, Math.PI * 0.25 ], [ -8, -2, 0.3 ],
+            [ 10, -2, 2 ], [ -2, -8, 1 ], [ 16, -6, 4 ],
         ]
 
         this.benches = []
 
-        for(const placement of placements)
+        benches.forEach((bench, i) =>
         {
-            const bench = original.clone() // Same shape, same material, new object
-            bench.position.set(...placement.position)
-            bench.rotation.y = placement.rotation
-            this.game.scene.add(bench)
-            this.benches.push(bench)
+            const [ x, z, yaw ] = placements[i]
+
+            this.benches.push(this.game.objects.addFromModel(
+                bench,
+                {},
+                {
+                    position: new THREE.Vector3(x, bench.position.y, z),
+                    rotation: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw),
+                    friction: 0.7,
+                    mass: 0.1, // Light: the car pushes them easily
+                    sleeping: true // At rest until something touches them
+                }
+            ))
+        })
+    }
+
+    // Bruno's 16 fence pieces (fences.glb, Draco-compressed), set up as a two-row pen
+    // right in the car's path. Same names convention as the benches.
+    setFences()
+    {
+        const model = this.game.resources.fencesModel.scene
+        const fences = model.children.filter((child) => child.name.startsWith('fencePhysical'))
+
+        this.fences = []
+
+        fences.forEach((fence, i) =>
+        {
+            const row = Math.floor(i / 8)
+            const column = i % 8
+
+            this.fences.push(this.game.objects.addFromModel(
+                fence,
+                {},
+                {
+                    position: new THREE.Vector3(24 + row * 3, fence.position.y, 3 + column * 2.4),
+                    rotation: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI * 0.5), // Long side along Z
+                    friction: 0.7,
+                    mass: 0.1,
+                    sleeping: true
+                }
+            ))
+        })
+    }
+
+    // A model built IN CODE with exactly the structure a Blender export would have:
+    // a visible mesh, with child objects whose NAMES describe the collision shapes.
+    // `colliders`: [ { name, scale: [x, y, z], geometry?, userData? } ]
+    createNamedModel(name, geometry, paletteIndex, colliders)
+    {
+        const mesh = new THREE.Mesh(this.game.materials.paint(geometry, paletteIndex), this.game.materials.palette)
+        mesh.name = name
+
+        for(const collider of colliders)
+        {
+            const child = new THREE.Mesh(collider.geometry ?? new THREE.BufferGeometry())
+            child.name = collider.name
+            child.scale.set(...collider.scale)
+            Object.assign(child.userData, collider.userData ?? {})
+            mesh.add(child)
         }
+
+        return mesh
+    }
+
+    // One model per collider type, to test the whole naming convention without Blender.
+    // Each is ADDED THE SAME WAY as the benches: addFromModel reads the names.
+    setNamedShapes()
+    {
+        const objects = this.game.objects
+        const identity = () => new THREE.Quaternion()
+
+        // trimesh: a ramp. The car must be able to DRIVE UP it: this is the same
+        // situation as the deck of your Cable Bridge.
+        // 6 corner points, and which three make each triangle:
+        const rampPoints = new Float32Array([ 0, 0, - 2,   8, 0, - 2,   8, 0, 2,   0, 0, 2,   8, 2, - 2,   8, 2, 2 ])
+        const rampTriangles = [ 0, 1, 2,  0, 2, 3,  1, 4, 5,  1, 5, 2,  0, 3, 5,  0, 5, 4,  0, 4, 1,  3, 2, 5 ]
+
+        const rampCollider = new THREE.BufferGeometry()
+        rampCollider.setAttribute('position', new THREE.Float32BufferAttribute(rampPoints, 3))
+        rampCollider.setIndex(rampTriangles)
+
+        // The visible ramp: same shape, but not indexed so every face is flat-shaded
+        const rampVisual = rampCollider.clone().toNonIndexed()
+        rampVisual.computeVertexNormals()
+        rampVisual.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(rampVisual.attributes.position.count * 2), 2))
+
+        const ramp = this.createNamedModel('rampPhysical', rampVisual, 15, [
+            { name: 'trimesh_ramp', scale: [ 1, 1, 1 ], geometry: rampCollider },
+        ])
+        objects.addFromModel(ramp, {}, { position: new THREE.Vector3(8, 0, 12), rotation: identity(), friction: 0.5 })
+
+        // tube: a round pillar. scale.y = height, scale.x = diameter.
+        const pillar = this.createNamedModel('pillarPhysical', new THREE.CylinderGeometry(0.8, 0.8, 4, 20), 4, [
+            { name: 'tube_pillar', scale: [ 1.6, 4, 1.6 ] },
+        ])
+        objects.addFromModel(pillar, {}, { position: new THREE.Vector3(- 6, 2, 24), rotation: identity() })
+
+        // ball: a bouncy boulder you can push. "Dynamic" in the name, and a custom
+        // property (restitution) on the collider child, exactly like a Blender custom property.
+        const boulder = this.createNamedModel('boulderPhysicalDynamic', new THREE.SphereGeometry(1, 20, 14), 20, [
+            { name: 'ball_boulder', scale: [ 2, 2, 2 ], userData: { restitution: 0.7 } },
+        ])
+        objects.addFromModel(boulder, {}, { position: new THREE.Vector3(6, 3, 22), rotation: identity(), mass: 0.4 })
+
+        // hull: a rock. The collider wraps the same points as the visible rock.
+        const rock = this.createNamedModel('rockPhysicalDynamic', new THREE.DodecahedronGeometry(1.2), 13, [
+            { name: 'hull_rock', scale: [ 1, 1, 1 ], geometry: new THREE.DodecahedronGeometry(1.2) },
+        ])
+        objects.addFromModel(rock, {}, { position: new THREE.Vector3(- 14, 3, 20), rotation: identity(), mass: 0.3 })
     }
 
     // A box painted with one palette swatch.

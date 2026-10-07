@@ -1,7 +1,7 @@
 import { Game } from '../Game.js'
 
 // Adapted from Bruno Simon's folio-2025 Physics.js (MIT), see LICENSE-THIRD-PARTY.
-// Much smaller: only boxes and balls, no collision groups, no water, no sounds.
+// Smaller: no collision groups, no water, no sounds, no kinematic bodies.
 //
 // Rapier simulates an invisible world of "bodies" (things that move) with
 // "colliders" (their invisible shapes). It knows nothing about meshes or
@@ -28,8 +28,17 @@ export class Physics
     //     type: 'dynamic' | 'fixed',   // dynamic = moves and falls, fixed = never moves
     //     position: { x, y, z },
     //     rotation: quaternion,         // optional
+    //     mass,                         // optional: total mass, shared between the colliders
     //     friction, restitution,        // optional (restitution = bounciness)
-    //     colliders: [ { shape: 'cuboid', parameters: [ halfX, halfY, halfZ ] } ]
+    //     sleeping: true,               // optional: starts at rest, wakes up when touched
+    //     colliders: [
+    //         { shape: 'cuboid',   parameters: [ halfX, halfY, halfZ ] },
+    //         { shape: 'ball',     parameters: [ radius ] },
+    //         { shape: 'cylinder', parameters: [ halfHeight, radius ] },
+    //         { shape: 'hull',     parameters: [ vertices ] },            // wraps the points in a convex shape
+    //         { shape: 'trimesh',  parameters: [ vertices, indices ] },   // the exact triangles
+    //         // every collider can also have: position: { x, y, z }, quaternion
+    //     ]
     // }
     getPhysical(_physicalDescription)
     {
@@ -63,6 +72,10 @@ export class Physics
         if(typeof _physicalDescription.canSleep !== 'undefined')
             rigidBodyDesc.setCanSleep(_physicalDescription.canSleep)
 
+        // Starts asleep: costs nothing until something touches it
+        if(typeof _physicalDescription.sleeping !== 'undefined')
+            rigidBodyDesc.setSleeping(_physicalDescription.sleeping)
+
         physical.body = this.world.createRigidBody(rigidBodyDesc)
 
         // Colliders
@@ -76,10 +89,26 @@ export class Physics
                 colliderDescription = colliderDescription.cuboid(..._colliderDescription.parameters)
             else if(_colliderDescription.shape === 'ball')
                 colliderDescription = colliderDescription.ball(..._colliderDescription.parameters)
+            else if(_colliderDescription.shape === 'cylinder')
+                colliderDescription = colliderDescription.cylinder(..._colliderDescription.parameters)
+            else if(_colliderDescription.shape === 'hull')
+                colliderDescription = colliderDescription.convexHull(_colliderDescription.parameters[0])
+            else if(_colliderDescription.shape === 'trimesh')
+                colliderDescription = colliderDescription.trimesh(_colliderDescription.parameters[0], _colliderDescription.parameters[1])
 
-            // Offset of this collider from the body centre
+            // convexHull() gives back null when the points cannot form a solid shape
+            if(!colliderDescription)
+            {
+                console.warn(`Physics: could not build a "${_colliderDescription.shape}" collider, skipped`)
+                continue
+            }
+
+            // Offset and tilt of this collider relative to the body
             if(_colliderDescription.position)
                 colliderDescription = colliderDescription.setTranslation(_colliderDescription.position.x, _colliderDescription.position.y, _colliderDescription.position.z)
+
+            if(_colliderDescription.quaternion)
+                colliderDescription = colliderDescription.setRotation(_colliderDescription.quaternion)
 
             // Density 0.1 is Bruno's value: light things, so a car of mass 2.5 can push boxes around
             colliderDescription = colliderDescription.setDensity(0.1)
@@ -93,6 +122,10 @@ export class Physics
                 else
                     colliderDescription = colliderDescription.setMass(_colliderDescription.mass)
             }
+
+            // Or a total mass for the whole body, shared equally between its colliders
+            if(typeof _physicalDescription.mass !== 'undefined')
+                colliderDescription = colliderDescription.setMass(_physicalDescription.mass / _physicalDescription.colliders.length)
 
             colliderDescription = colliderDescription.setFriction(_physicalDescription.friction ?? _colliderDescription.friction ?? 0.2)
             colliderDescription = colliderDescription.setRestitution(_physicalDescription.restitution ?? _colliderDescription.restitution ?? 0.15)
