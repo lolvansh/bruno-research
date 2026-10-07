@@ -6,6 +6,8 @@ import { Trees } from './Trees.js'
 import { Foliage } from './Foliage.js'
 import { Grass } from './Grass.js'
 import { Floor } from './Floor.js'
+import { WaterSurface } from './WaterSurface.js'
+import { WaterEffects } from './WaterEffects.js'
 import { createRandom } from '../utilities/random.js'
 
 export class World
@@ -20,6 +22,7 @@ export class World
         this.setFences()
         this.setNamedShapes()
         this.setVehicle()
+        this.setWater()
         this.setTrees()
         this.setGrass()
         this.setBoxDropper()
@@ -341,6 +344,13 @@ export class World
         )
 
         return mesh
+    }
+
+    // The see-through water over the sea and ponds, plus the splashes and ripples the car makes in it
+    setWater()
+    {
+        this.waterSurface = new WaterSurface()
+        this.waterEffects = new WaterEffects()
     }
 
     // The island's ground: shape, colour and physics all come from the Terrain map (see Floor.js)

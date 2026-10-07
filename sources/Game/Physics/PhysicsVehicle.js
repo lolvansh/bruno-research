@@ -29,6 +29,8 @@ export class PhysicsVehicle
         this.reverseBrake = 0.4 // Brake used when you press the opposite direction
         this.suspensionHeight = 0.88 // Spring rest length. Bruno's "low" setting.
         this.suspensionStiffness = 20 // Bruno's "low" setting
+        this.baseDamping = 0.1 // Air resistance on dry land
+        this.waterDrag = 1.1 // Extra resistance with all 4 wheels in water
 
         // What the car is doing, measured after each physics step
         this.position = new THREE.Vector3(0, 4, 0)
@@ -44,6 +46,7 @@ export class PhysicsVehicle
         this.goingForward = true
         this.forwardSpeed = 0
         this.steer = 0 // Current wheel angle, so the visual can copy it
+        this.waterRatio = 0 // 0 = all wheels dry, 1 = all four wheels in water
 
         this.setChassis()
         this.controller = this.game.physics.world.createVehicleController(this.chassis.physical.body)
@@ -211,6 +214,9 @@ export class PhysicsVehicle
         // caps it at 1/60 and uses the 30-frame average so one slow frame cannot
         // make the springs explode.
         this.controller.updateVehicle(Math.min(1 / 60, this.game.ticker.deltaAverage))
+
+        // Wading: water slows the car. The more wheels are in it, the more drag.
+        this.chassis.physical.body.setLinearDamping(this.baseDamping + this.waterRatio * this.waterDrag)
     }
 
     updatePostPhysics()
@@ -252,5 +258,17 @@ export class PhysicsVehicle
         }
 
         this.wheels.inContactCount = inContactCount
+
+        // How many wheels are touching ground that is UNDER the water surface?
+        const surface = this.game.water.surfaceElevation
+        let inWater = 0
+
+        for(const wheel of this.wheels.items)
+        {
+            if(wheel.inContact && wheel.contactPoint && wheel.contactPoint.y < surface)
+                inWater++
+        }
+
+        this.waterRatio = inWater / 4
     }
 }

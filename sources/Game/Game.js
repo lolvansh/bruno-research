@@ -16,6 +16,7 @@ import { InputsHud } from './Inputs/InputsHud.js'
 import { Player } from './Player.js'
 import { Lighting } from './Lighting.js'
 import { Terrain } from './Terrain.js'
+import { Water } from './Water.js'
 import { World } from './World/World.js'
 
 // The one object that owns everything. Any other class can get it with
@@ -109,6 +110,7 @@ export class Game
         this.RAPIER = RAPIER
 
         // Now everything exists, so the systems that use them can be built
+        this.water = new Water() // Before Materials: they paint a waterline at its height
         this.materials = new Materials()
         this.lighting = new Lighting()
         this.terrain = new Terrain() // The island map. The floor, grass and trees all ask it.

@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu'
-import { Fn, texture, uniform, color, mix, smoothstep, vec3, float, sin, time, positionWorld } from 'three/tsl'
+import { Fn, texture, uniform, color, mix, smoothstep, positionWorld } from 'three/tsl'
 import { Game } from './Game.js'
 import { createNoise } from './utilities/noise.js'
 
@@ -178,28 +178,22 @@ export class Terrain
         {
             const depth = terrainData.b
 
-            const baseColor = mix(this.dirtColor, this.shallowColor, smoothstep(0, 0.22, depth)).toVar()
-            baseColor.assign(mix(baseColor, this.deepColor, smoothstep(0.2, 0.9, depth)))
+            // The land stays dirt down to the waterline (depth 0.2 = the water surface), and only
+            // UNDER water does it turn teal, then navy. The water surface is drawn on top of this.
+            const baseColor = mix(this.dirtColor, this.shallowColor, smoothstep(0.15, 0.4, depth)).toVar()
+            baseColor.assign(mix(baseColor, this.deepColor, smoothstep(0.3, 0.95, depth)))
             baseColor.assign(mix(baseColor, this.grassColor, terrainData.g))
 
             return baseColor
         })
 
-        // The full colour of the FLOOR: the above, plus foam on the shore and paving on top
+        // The full colour of the FLOOR: the above, plus paving on top. (The shore foam is on the water surface now.)
         this.floorColorNode = Fn(() =>
         {
             const terrainData = this.terrainNode(positionWorld.xz)
             const depth = terrainData.b
 
             const floorColor = this.baseColorNode(terrainData).toVar()
-
-            // Foam: white lines that follow the shore and drift in and out.
-            // `depth * 70` makes bands along the shoreline; adding time moves them.
-            const wave = sin(time.mul(1.3).add(depth.mul(70)))
-            const foam = smoothstep(0.75, 1, wave)
-                .mul(smoothstep(0.02, 0.05, depth)) // Not on dry land
-                .mul(float(1).sub(smoothstep(0.12, 0.2, depth))) // Not in the deep
-            floorColor.assign(mix(floorColor, vec3(1), foam.mul(0.55)))
 
             // Paving: a tiled texture, coloured between two tones, laid over everything
             const slabPattern = texture(this.game.resources.floorSlabsTexture, positionWorld.xz.mul(0.175)).r

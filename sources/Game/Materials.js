@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu'
-import { color, mix, uv, vec4, luminance } from 'three/tsl'
+import { color, mix, uv, vec3, vec4, luminance, positionWorld, smoothstep, float } from 'three/tsl'
 import { Game } from './Game.js'
 
 // Adapted from Bruno Simon's folio-2025 Materials.js (MIT), see LICENSE-THIRD-PARTY.
@@ -69,7 +69,24 @@ export class Materials
     save(name, material)
     {
         material.name = name
+
+        if(material.isMeshLambertNodeMaterial)
+            this.addWaterline(material)
+
         this.list.set(name, material)
+    }
+
+    // THE WATERLINE. Wherever a surface crosses the water level (y = -0.3), paint a thin
+    // white band. The car half under water, a bench pushed into a pond, a wall at the
+    // shore: all get a white line exactly where the water touches them. Bruno does the
+    // same inside his big shader. Here it is a small glow added to each lit material.
+    addWaterline(material)
+    {
+        const water = this.game.water
+        const distanceToSurface = positionWorld.y.sub(water.surfaceElevationUniform).abs()
+        const band = float(1).sub(smoothstep(0, water.surfaceThicknessUniform, distanceToSurface))
+
+        material.emissiveNode = vec3(band)
     }
 
     // THE SHADER LANGUAGE (TSL). Instead of writing GPU code, we describe the
@@ -107,7 +124,10 @@ export class Materials
     // For a name we do not know: a plain lit material with the same colour.
     createFromMaterial(baseMaterial)
     {
-        return new THREE.MeshLambertNodeMaterial({ color: baseMaterial.color, map: baseMaterial.map })
+        const material = new THREE.MeshLambertNodeMaterial({ color: baseMaterial.color, map: baseMaterial.map })
+        this.addWaterline(material)
+
+        return material
     }
 
     getFromName(name, baseMaterial)
