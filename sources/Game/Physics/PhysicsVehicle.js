@@ -173,10 +173,19 @@ export class PhysicsVehicle
         const player = this.game.player
         const deltaScaled = this.game.ticker.deltaScaled
 
+        // FRAME RATE FIX. Rapier turns the ENGINE force into a push of
+        // (force x the controller's time step). That step is capped at 1/60 s, but on a
+        // faster screen it gets SMALLER (1/144 s at 144 fps), so the same force pushed
+        // 2.4x less and the car was weaker. Bruno's numbers were tuned at 60 fps, so we scale the
+        // force back up by the same ratio: the car now feels the same at any frame rate.
+        // (The limit of 1/480 only stops a freak tiny value from making a giant force.)
+        const controllerDelta = Math.max(Math.min(1 / 60, this.game.ticker.deltaAverage), 1 / 480)
+        const forceScale = (1 / 60) / controllerDelta
+
         // Engine force: pushes all 4 wheels. Beyond topSpeed it fades toward zero,
         // so the car cannot accelerate forever.
         const overflowSpeed = Math.max(0, this.speed - this.topSpeed)
-        let engineForce = player.accelerating * this.engineForceAmplitude / (1 + overflowSpeed) * deltaScaled
+        let engineForce = player.accelerating * this.engineForceAmplitude / (1 + overflowSpeed) * deltaScaled * forceScale
 
         // Brake: the brake key, or a light idle brake when you press nothing
         let brake = player.braking
@@ -197,6 +206,8 @@ export class PhysicsVehicle
             engineForce = 0
         }
 
+        // No forceScale here: Rapier uses the brake value as it is, it is not multiplied by the controller's
+        // time step like the engine force is. (Scaling it too made the car brake far too hard at high frame rates.)
         brake *= this.brakeAmplitude * deltaScaled
 
         // Steering: only the front wheels
@@ -213,7 +224,7 @@ export class PhysicsVehicle
         // Rapier integrates the wheel springs itself, with this time step. Bruno
         // caps it at 1/60 and uses the 30-frame average so one slow frame cannot
         // make the springs explode.
-        this.controller.updateVehicle(Math.min(1 / 60, this.game.ticker.deltaAverage))
+        this.controller.updateVehicle(controllerDelta)
 
         // Wading: water slows the car. The more wheels are in it, the more drag.
         this.chassis.physical.body.setLinearDamping(this.baseDamping + this.waterRatio * this.waterDrag)
