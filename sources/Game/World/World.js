@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu'
 import { Game } from '../Game.js'
+import { VisualVehicle } from './VisualVehicle.js'
 
 export class World
 {
@@ -10,7 +11,7 @@ export class World
         this.setGround()
         this.setTestBlocks()
         this.setBenches()
-        this.setTestVehicleVisual()
+        this.setVehicle()
         this.setBoxDropper()
 
         // Priority 10: the dropper timer. (Nothing here must run before physics.)
@@ -18,6 +19,12 @@ export class World
         {
             this.update()
         }, 10)
+    }
+
+    // The car you see. It reads the physical car and copies it onto Bruno's model.
+    setVehicle()
+    {
+        this.visualVehicle = new VisualVehicle(this.game.resources.vehicleModel.scene)
     }
 
     // The first REAL model: Bruno's bench, loaded from a GLB file.
@@ -109,57 +116,6 @@ export class World
         this.addBlock([ 6, 1.5, 2 ], [ -6, 0.75, 14 ], 3, 'fixed') // sky blue
         this.addBlock([ 2, 2, 2 ], [ 8, 1, -14 ], 8, 'fixed') // yellow
         this.addBlock([ 1, 4, 1 ], [ 0, 2, 0 ], 19, 'fixed') // crimson pillar in the middle
-    }
-
-    // TEMPORARY (replaced by the real car model in 7c): a red box for the chassis
-    // and four dark cylinders for the wheels. Every frame it copies what the
-    // physical car is doing, so you can SEE the springs and the steering.
-    setTestVehicleVisual()
-    {
-        const materials = this.game.materials
-        const vehicle = this.game.physicalVehicle
-
-        this.vehicleVisual = new THREE.Group()
-
-        // Same sizes and offsets as the physical colliders (full size = 2 x half size)
-        const body = new THREE.Mesh(materials.paint(new THREE.BoxGeometry(2.6, 0.8, 1.7), 16), materials.palette)
-        body.position.y = - 0.1
-        const cabin = new THREE.Mesh(materials.paint(new THREE.BoxGeometry(1.0, 0.3, 1.3), 17), materials.palette)
-        cabin.position.y = 0.4
-        this.vehicleVisual.add(body, cabin)
-
-        // Wheels: cylinders lying on their side (axle along Z)
-        this.vehicleWheels = []
-        for(const wheel of vehicle.wheels.items)
-        {
-            const geometry = new THREE.CylinderGeometry(0.4, 0.4, 0.5, 16)
-            geometry.rotateX(Math.PI * 0.5)
-            materials.paint(geometry, 22)
-
-            const mesh = new THREE.Mesh(geometry, materials.palette)
-            this.vehicleVisual.add(mesh)
-            this.vehicleWheels.push(mesh)
-        }
-
-        this.game.scene.add(this.vehicleVisual)
-
-        // Priority 8: after the car has moved (5)
-        this.game.ticker.events.on('tick', () =>
-        {
-            this.vehicleVisual.position.copy(vehicle.position)
-            this.vehicleVisual.quaternion.copy(vehicle.quaternion)
-
-            for(let i = 0; i < 4; i++)
-            {
-                const wheel = vehicle.wheels.items[i]
-
-                // The wheel hangs `suspensionLength` below its attachment point
-                this.vehicleWheels[i].position.set(wheel.basePosition.x, wheel.basePosition.y - wheel.suspensionLength, wheel.basePosition.z)
-
-                // Front wheels (0 and 1) turn with the steering
-                this.vehicleWheels[i].rotation.y = i < 2 ? vehicle.steer : 0
-            }
-        }, 8)
     }
 
     // TEMPORARY: rain boxes on the world so you can watch the physics work

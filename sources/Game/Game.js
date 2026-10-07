@@ -76,6 +76,7 @@ export class Game
                     resource.generateMipmaps = false // Mipmaps are blurred copies: they would blend swatches too
                 } ],
                 [ 'benchesModel', 'benches/benches.glb', 'gltf' ],
+                [ 'vehicleModel', 'vehicle/default.glb', 'gltf' ],
             ],
             (toLoad, total) =>
             {

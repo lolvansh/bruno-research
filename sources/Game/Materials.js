@@ -1,9 +1,10 @@
 import * as THREE from 'three/webgpu'
+import { color, mix, uv, vec4, luminance } from 'three/tsl'
 import { Game } from './Game.js'
 
-// Adapted from the idea in Bruno Simon's folio-2025 Materials.js (MIT),
-// see LICENSE-THIRD-PARTY. His version builds a big custom shader material;
-// ours is the plain version of the same trick.
+// Adapted from Bruno Simon's folio-2025 Materials.js (MIT), see LICENSE-THIRD-PARTY.
+// His versions build big custom shaders (shadows, fog, light bounce, reveal...).
+// Ours are the plain versions of the same ideas.
 //
 // THE PALETTE TRICK
 // static/palette.png is a tiny image: 128 x 4 pixels. It is not a picture, it
@@ -18,6 +19,11 @@ import { Game } from './Game.js'
 // Every face of every model has UV coordinates = "which point of the image do
 // I read my colour from". Point a face at swatch 16 and it is red. One image,
 // one material, the whole world.
+//
+// MATERIALS BY NAME
+// A model made in Blender carries material NAMES ("palette", "redGradient"...).
+// When a model is loaded, updateObject() swaps each one for OUR material of the
+// same name. That is how the car's paint, glow and palette colours all work.
 export class Materials
 {
     static PALETTE_WIDTH = 128
@@ -27,6 +33,14 @@ export class Materials
     {
         this.game = Game.getInstance()
 
+        this.list = new Map()
+
+        this.setPalette()
+        this.setNamedMaterials()
+    }
+
+    setPalette()
+    {
         // The image itself is loaded by ResourcesLoader (see Game.init),
         // with the right filters already set.
         this.paletteTexture = this.game.resources.paletteTexture
@@ -34,17 +48,89 @@ export class Materials
         // Lambert = simple matte lighting. Light hits a face, it gets brighter or darker.
         // That alone gives the faceted, low-poly look.
         this.palette = new THREE.MeshLambertNodeMaterial({ map: this.paletteTexture })
+        this.save('palette', this.palette)
     }
 
-    // Models from Blender arrive with their own material, named "palette".
-    // Swap it for ours, so the whole world shares ONE material.
-    // (Bruno does the same in Materials.updateObject, by material name.)
+    setNamedMaterials()
+    {
+        // Paint: a colour that fades from top to bottom of each surface (follows the model's UV)
+        // The first is what the model asks for by name. The others are alternatives
+        // VisualVehicle can switch to (Bruno's own values).
+        this.createGradient('redGradient', '#ff3a3a', '#721551')
+        this.createGradient('orangeGradient', '#ff940d', '#af0071')
+        this.createGradient('whiteGradient', '#ffffff', '#b5b5b5')
+        this.createGradient('blackGradient', '#626262', '#262526')
+
+        // Glow: bright, ignores lights. Radial = brightest at the centre of the UV square.
+        this.createEmissiveGradient('emissiveOrangeRadialGradient', '#ff8641', '#ff3e00', 1.7, true)
+        this.createEmissiveGradient('emissivePurpleRadialGradient', '#454bbc', '#ff2eb4', 1.7, true)
+    }
+
+    save(name, material)
+    {
+        material.name = name
+        this.list.set(name, material)
+    }
+
+    // THE SHADER LANGUAGE (TSL). Instead of writing GPU code, we describe the
+    // colour as a small graph of operations: "mix colour A and B by the V coordinate".
+    createGradient(name, colorA, colorB)
+    {
+        const material = new THREE.MeshLambertNodeMaterial()
+        material.colorNode = mix(color(colorA), color(colorB), uv().y)
+
+        this.save(name, material)
+
+        return material
+    }
+
+    createEmissiveGradient(name, colorA, colorB, intensity = 1, normalize = true)
+    {
+        // Distance from the centre of the UV square: 0 in the middle, 1 at the edge
+        const distanceToCenter = uv().sub(0.5).length().mul(2)
+        let mixedColor = mix(color(colorA), color(colorB), distanceToCenter)
+
+        // Divide by brightness so both colours glow equally hard
+        if(normalize)
+            mixedColor = mixedColor.div(luminance(mixedColor))
+
+        // Basic = no lighting at all. Values above 1 are brighter than white.
+        const material = new THREE.MeshBasicNodeMaterial()
+        material.outputNode = vec4(mixedColor.mul(intensity), 1)
+        material.fog = false
+
+        this.save(name, material)
+
+        return material
+    }
+
+    // For a name we do not know: a plain lit material with the same colour.
+    createFromMaterial(baseMaterial)
+    {
+        return new THREE.MeshLambertNodeMaterial({ color: baseMaterial.color, map: baseMaterial.map })
+    }
+
+    getFromName(name, baseMaterial)
+    {
+        if(name !== '' && this.list.has(name))
+            return this.list.get(name)
+
+        const material = this.createFromMaterial(baseMaterial)
+
+        // Remember it, so every object using that name shares ONE material
+        if(name !== '')
+            this.save(name, material)
+
+        return material
+    }
+
+    // Swap every mesh's material (in a loaded model) for ours of the same name.
     updateObject(object)
     {
         object.traverse((child) =>
         {
-            if(child.isMesh && child.material.name === 'palette')
-                child.material = this.palette
+            if(child.isMesh)
+                child.material = this.getFromName(child.material.name, child.material)
         })
     }
 
@@ -63,12 +149,12 @@ export class Materials
     paint(geometry, index)
     {
         const [ u, v ] = this.getPaletteUv(index)
-        const uv = geometry.attributes.uv
+        const uvAttribute = geometry.attributes.uv
 
-        for(let i = 0; i < uv.count; i++)
-            uv.setXY(i, u, v)
+        for(let i = 0; i < uvAttribute.count; i++)
+            uvAttribute.setXY(i, u, v)
 
-        uv.needsUpdate = true
+        uvAttribute.needsUpdate = true
 
         return geometry
     }
