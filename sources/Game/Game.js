@@ -10,6 +10,9 @@ import { Materials } from './Materials.js'
 import { Physics } from './Physics/Physics.js'
 import { PhysicsWireframe } from './Physics/PhysicsWireframe.js'
 import { Objects } from './Objects.js'
+import { Inputs } from './Inputs/Inputs.js'
+import { InputsHud } from './Inputs/InputsHud.js'
+import { Player } from './Player.js'
 import { Lighting } from './Lighting.js'
 import { World } from './World/World.js'
 
@@ -45,6 +48,9 @@ export class Game
         this.scene.background = new THREE.Color('#1b2a41')
         this.ticker = new Ticker()
         this.viewport = new Viewport(this.domElement)
+
+        // Inputs come before View, because View registers the zoom action on it
+        this.inputs = new Inputs()
 
         // The camera lives inside View. Needs the scene, ticker and viewport above.
         this.view = new View()
@@ -87,6 +93,8 @@ export class Game
         this.physics = new Physics() // Priority 3
         this.wireframe = new PhysicsWireframe() // Priority 4
         this.objects = new Objects() // Priority 4
+        this.player = new Player() // Priority 1
+        this.inputsHud = new InputsHud() // Priority 20
 
         // Content
         this.world = new World()

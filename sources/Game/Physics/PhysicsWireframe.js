@@ -5,8 +5,7 @@ import { Game } from '../Game.js'
 //
 // Draws the INVISIBLE colliders as lines. Essential for debugging: what you see
 // and what the physics sees can be different, and this shows the second one.
-// Press P to toggle it (temporary key listener until we have an Inputs system),
-// or open the page with #physics at the end of the address.
+// Press P to toggle it, or open the page with #physics at the end of the address.
 export class PhysicsWireframe
 {
     constructor()
@@ -31,9 +30,14 @@ export class PhysicsWireframe
         if(location.hash.match(/physics/i))
             this.setActive(true)
 
-        addEventListener('keydown', (event) =>
+        this.game.inputs.addActions([
+            { name: 'wireframe', categories: [], keys: [ 'Keyboard.KeyP' ] }
+        ])
+
+        this.game.inputs.events.on('wireframe', (action) =>
         {
-            if(event.code === 'KeyP')
+            // The event fires on press AND release; only react to the press
+            if(action.active)
                 this.setActive(!this.active)
         })
 

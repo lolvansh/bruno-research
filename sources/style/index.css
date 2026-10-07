@@ -56,3 +56,23 @@ body
     transform: scaleX(0);
     transform-origin: left center;
 }
+
+/* Inputs readout (press I). Debug only. */
+.inputs-hud
+{
+    position: fixed;
+    left: 12px;
+    bottom: 12px;
+    padding: 8px 10px;
+    background: rgba(0, 0, 0, 0.6);
+    color: rgba(255, 255, 255, 0.5);
+    font: 12px/1.6 monospace;
+    pointer-events: none;
+}
+
+.inputs-hud .is-on
+{
+    color: #ffffff;
+    background: #ec3f1c;
+    padding: 0 4px;
+}
