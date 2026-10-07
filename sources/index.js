@@ -1,12 +1,8 @@
 import './style/index.css'
+import { Game } from './Game/Game.js'
 
-const canvas = document.querySelector('.js-canvas')
-const context = canvas.getContext('2d')
-
-canvas.width = window.innerWidth
-canvas.height = window.innerHeight
-
-context.fillStyle = '#ffffff'
-context.font = '32px sans-serif'
-context.textAlign = 'center'
-context.fillText('Surat World: setup works', canvas.width / 2, canvas.height / 2)
+// In dev, expose the game on `window` so we can poke at it from the browser console
+if(import.meta.env.DEV)
+    window.game = new Game()
+else
+    new Game()
