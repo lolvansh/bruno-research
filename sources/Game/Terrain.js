@@ -33,10 +33,10 @@ export class Terrain
         this.island = { x: 0, z: - 14 }
         this.ponds = []
 
-        // The Tapi: an east-west river. riverCenterAt(x) is its wavy middle line; the only way
-        // across is the cable bridge (at x = 0), so the far bank can only be reached by crossing it.
-        // halfWidth 4 keeps the water band (~14 wide) just narrow enough for the bridge to span.
-        this.river = { centerZ: 8, halfWidth: 4, depth: 0.7 }
+        // The Tapi: an east-west river. riverCenterAt(x) is its wavy middle line and
+        // riverHalfWidthAt(x) its varying width; the only way across is the cable bridge (at x = 0),
+        // which is why the river is kept narrow there (so the fixed-length bridge can span it).
+        this.river = { centerZ: 8, depth: 0.7 }
 
         // ROADS (the red/paving channel, like Bruno's hand-painted paths). Each road is a list of
         // [x, z] points joined by straight strips. Over the river the paving vanishes, so the bridge
@@ -80,9 +80,20 @@ export class Terrain
     }
 
     // The z of the river's wavy centre line at a given x. The bridge is placed on it.
+    // Several waves of different lengths plus noise make it wind rather than run straight.
     riverCenterAt(x)
     {
-        return this.river.centerZ + Math.sin(x * 0.035) * 5 + (this.noise.fbm(x * 0.06 + 40, 7, 2) - 0.5) * 4
+        return this.river.centerZ
+            + Math.sin(x * 0.05) * 4
+            + Math.sin(x * 0.11 + 1.5) * 2
+            + (this.noise.fbm(x * 0.055 + 40, 7, 3) - 0.5) * 2.5
+    }
+
+    // Half the river's width at a given x. It is deliberately narrow near the bridge (x = 0) and
+    // bulges wider elsewhere, so the river is fat in some stretches and a thin channel in others.
+    riverHalfWidthAt(x)
+    {
+        return 3.6 + Math.sin(x * 0.065 - 1.4) * 2.2 + (this.noise.fbm(x * 0.09 + 70, 3, 2) - 0.5) * 1.8
     }
 
     // Shortest distance from point (px, pz) to the line segment a-b
@@ -139,9 +150,10 @@ export class Terrain
         }
 
         // The river: a band of water around its wavy centre line. Deep in the middle, shelving to the banks.
-        const river = this.river
+        // Both the centre and the width vary with x, so it curves and changes size along its length.
+        const halfWidth = this.riverHalfWidthAt(x)
         const riverDistance = Math.abs(z - this.riverCenterAt(x))
-        const riverDepth = (1 - smoothstep(river.halfWidth - 2, river.halfWidth + 3, riverDistance)) * river.depth
+        const riverDepth = (1 - smoothstep(halfWidth - 2, halfWidth + 3, riverDistance)) * this.river.depth
 
         depth = Math.max(depth, riverDepth)
 

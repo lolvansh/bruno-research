@@ -291,6 +291,9 @@ export class World
 
         // The cables and pylons dissolve around the car when they are between it and the camera
         this.game.materials.makeSeeThrough(this.cableBridge.visual.object3D)
+
+        // Keep trees and bushes off the bridge and its ramps (they grow to the sides instead)
+        this.keepClear.push({ x: 0, z: this.game.terrain.riverCenterAt(0), radius: 7 })
     }
 
     // MINI SURAT. The landmarks all live in one file (landmarks.glb, made by resources/make_landmarks.py).
