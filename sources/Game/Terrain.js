@@ -33,6 +33,9 @@ export class Terrain
         this.island = { x: 0, z: - 14 }
         this.ponds = []
 
+        // Grass-free patches. The khaman thali (platter + two bowls) stands at (0, -50).
+        this.clearings = [ { x: 0, z: - 50, radius: 8 } ]
+
         // The Tapi: an east-west river. riverCenterAt(x) is its wavy middle line and
         // riverHalfWidthAt(x) its varying width; the only way across is the cable bridge (at x = 0),
         // which is why the river is kept narrow there (so the fixed-length bridge can span it).
@@ -168,7 +171,11 @@ export class Terrain
 
         // Grass: patches where a slow noise is high. Not on paving, not in water.
         const grassNoise = noise.fbm(x * 0.055 + 20, z * 0.055 + 20, 4)
-        const grass = smoothstep(0.47, 0.6, grassNoise) * dryness * (1 - paving)
+        let grass = smoothstep(0.47, 0.6, grassNoise) * dryness * (1 - paving)
+
+        // Clearings: bare ground where big props stand, so grass blades cannot poke through them
+        for(const clearing of this.clearings)
+            grass *= smoothstep(clearing.radius, clearing.radius + 2.5, Math.hypot(x - clearing.x, z - clearing.z))
 
         return [ paving, grass, depth ]
     }

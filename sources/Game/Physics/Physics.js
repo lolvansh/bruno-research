@@ -77,6 +77,11 @@ export class Physics
         if(typeof _physicalDescription.sleeping !== 'undefined')
             rigidBodyDesc.setSleeping(_physicalDescription.sleeping)
 
+        // Continuous collision detection: for small, thin things that can be thrown very fast (the khaman
+        // toppings). Without it they can jump clean through the ground or a platter in a single step.
+        if(_physicalDescription.ccd)
+            rigidBodyDesc.setCcdEnabled(true)
+
         physical.body = this.world.createRigidBody(rigidBodyDesc)
 
         // Colliders
@@ -132,6 +137,13 @@ export class Physics
 
             colliderDescription = colliderDescription.setFriction(_physicalDescription.friction ?? _colliderDescription.friction ?? 0.2)
             colliderDescription = colliderDescription.setRestitution(_physicalDescription.restitution ?? _colliderDescription.restitution ?? 0.15)
+
+            // Optional collision groups: a number = (what this IS) << 16 | (what it can touch). By default
+            // everything touches everything. The khaman toppings use it so they hit the world but not each other.
+            const collisionGroups = _physicalDescription.collisionGroups ?? _colliderDescription.collisionGroups
+
+            if(typeof collisionGroups !== 'undefined')
+                colliderDescription = colliderDescription.setCollisionGroups(collisionGroups)
 
             physical.colliders.push(this.world.createCollider(colliderDescription, physical.body))
         }

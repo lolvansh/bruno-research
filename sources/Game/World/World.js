@@ -25,6 +25,7 @@ export class World
         this.setFences()
         this.setCableBridge()
         this.setLandmarks()
+        this.setKhaman()
         this.setVehicle()
         this.setWater()
         this.setTrees()
@@ -350,6 +351,204 @@ export class World
 
             this.keepClear.push({ x: place.x, z: place.z, radius: place.radius })
         }
+    }
+
+    // THE SURAT KHAMAN THALI (khaman.glb, resources/make_thali.py). A big scalloped cream platter
+    // (a loose body you can drive onto) holds 6 khaman pieces (one instanced mesh, each its own body) with
+    // loose toppings on top, and a chutney bowl and an onion bowl sit on the ground beside it.
+    setKhaman()
+    {
+        const scene = this.game.resources.khamanModel.scene
+        const find = (name) => scene.children.find((child) => child.name.startsWith(name))
+
+        // Where the thali sits: an open patch on the south bank
+        const center = new THREE.Vector3(0, 0, - 50)
+
+        // The eating-surface height of the platter (the khaman rest on this)
+        const SURFACE = 0.24
+
+        // THE PLATTER is a loose body you can push and throw, and you can DRIVE ONTO it. Its collision is built
+        // from BOXES ONLY, on purpose. We tried a big many-sided solid for the ramp: anything lying flat on it
+        // (khaman, a chili) got a single contact point, so it tipped, sank, spun and never fell asleep. Boxes
+        // resting on boxes get solid contact on every corner and settle. (A trimesh cannot be used on a moving
+        // body either: it has no mass.)
+        const plateNode = find('servingPlatePhysical')
+
+        // 1) The flat top, where the food sits: a few boxes that together cover the middle of the dish. Their
+        //    bottoms are a little off the ground, so they never touch the terrain. [ x, z, half width, half depth ]
+        const FLAT_BOTTOM = 0.04
+        const flatBoxes = [
+            [ 0, 0, 2.7, 1.8 ],      // the middle, where the six khaman stand
+            [ 0, 2.2, 1.7, 0.4 ],    // a strip on each side of it, so toppings that land there rest on a flat box...
+            [ 0, - 2.2, 1.7, 0.4 ],
+            [ 2.85, 0, 0.15, 1.3 ],  // ... and a small cap at each end
+            [ - 2.85, 0, 0.15, 1.3 ],
+        ]
+        const plateColliders = flatBoxes.map(([ x, z, hx, hz ]) => ({
+            shape: 'cuboid',
+            parameters: [ hx, (SURFACE - FLAT_BOTTOM) / 2, hz ],
+            position: { x, y: FLAT_BOTTOM + (SURFACE - FLAT_BOTTOM) / 2, z }
+        }))
+
+        // 2) The ramp around it: a ring of thin boxes, each tilted to slope from the ground (r = 3.5) up to the
+        //    height of the flat top (r = 3.0). A car with 0.4-radius wheels rolls straight up (about 22 degrees).
+        const RAMP_COUNT = 16, RAMP_FOOT = 3.5, RAMP_TOP = 3.0, RAMP_THICKNESS = 0.05
+        const rampFoot = RAMP_THICKNESS * 0.95 // a tilted box dips this far below its own surface: lift it so it stays off the ground
+        const rampRise = SURFACE - rampFoot
+        const rampAngle = Math.atan2(rampRise, RAMP_FOOT - RAMP_TOP)
+        const rampLength = Math.hypot(RAMP_FOOT - RAMP_TOP, rampRise)
+
+        // the box's middle: halfway along the slope surface, then half a thickness down into the box
+        const rampRadius = (RAMP_FOOT + RAMP_TOP) / 2 - Math.sin(rampAngle) * RAMP_THICKNESS / 2
+        const rampHeight = rampFoot + rampRise / 2 - Math.cos(rampAngle) * RAMP_THICKNESS / 2
+        const rampHalfArc = Math.PI * rampRadius / RAMP_COUNT + 0.06 // each box a little wider than its slice, so the ring has no gaps
+
+        for(let i = 0; i < RAMP_COUNT; i++)
+        {
+            const angle = (i / RAMP_COUNT) * Math.PI * 2
+
+            // tilt it down towards the outside (a turn around its own z axis), then swing it round to its place
+            const quaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), - angle)
+                .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), - rampAngle))
+
+            plateColliders.push({
+                shape: 'cuboid',
+                parameters: [ rampLength / 2 + 0.03, RAMP_THICKNESS / 2, rampHalfArc ],
+                position: { x: Math.cos(angle) * rampRadius, y: rampHeight, z: Math.sin(angle) * rampRadius },
+                quaternion
+            })
+        }
+
+        this.servingPlate = this.game.objects.add({ model: plateNode }, {
+            type: 'dynamic',
+            position: new THREE.Vector3(center.x, 0, center.z),
+            mass: 2.2,
+            friction: 0.7,
+            sleeping: true,
+            colliders: plateColliders
+        })
+
+        // THE TWO BOWLS stand side by side, just beyond the platter. Each is a loose cylinder body, so
+        // they can be shoved around and thrown. (Each model's base sits on y = 0.)
+        const bowls = [
+            { name: 'chutneyBowl', offset: [ - 1.1, 5.1 ], height: 0.82, radius: 1.0, centerX: 0 },
+            { name: 'onionBowl',   offset: [ 1.1, 5.1 ],  height: 0.56, radius: 1.05, centerX: 0.17 },
+        ]
+        this.bowls = {}
+        for(const { name, offset, height, radius, centerX } of bowls)
+        {
+            const node = find(name)
+            if(!node) continue
+
+            this.bowls[name] = this.game.objects.add({ model: node }, {
+                type: 'dynamic',
+                position: new THREE.Vector3(center.x + offset[0], 0, center.z + offset[1]),
+                mass: 0.25,
+                friction: 0.5,
+                restitution: 0.2,
+                sleeping: true,
+                colliders: [ { shape: 'cylinder', parameters: [ height / 2, radius ], position: { x: centerX, y: height / 2, z: 0 } } ]
+            })
+        }
+
+        // 6 khaman filling the plate (2 rows of 3), each its own body but one instanced mesh.
+        // Each piece's collider is a 1.36 wide box. The spacing leaves room for it to be turned by up to
+        // +-0.25 radians without touching its neighbours: boxes that overlap at the start make the physics
+        // fight to push them apart as soon as they wake, which looks like endless vibration.
+        const spots = [ [ - 1.8, - 0.875 ], [ 0, - 0.875 ], [ 1.8, - 0.875 ],
+                        [ - 1.8, 0.875 ],   [ 0, 0.875 ],   [ 1.8, 0.875 ] ]
+
+        // The LOOSE TOPPINGS (onion, chili, curry leaf, sev). Each one is its own node in the file; the node's
+        // position is where it sits on one khaman. Every khaman gets its own full set, resting on its top.
+        const toppingNodes = scene.children.filter((child) => /^(onion|chili|curryleaf|sev)PhysicalDynamic/.test(child.name))
+        const toppingBuckets = toppingNodes.map(() => ({ nodes: [], places: [] }))
+        const yAxis = new THREE.Vector3(0, 1, 0)
+
+        const khNodes = [], khPlace = []
+        for(const [ lx, lz ] of spots)
+        {
+            const yaw = (Math.random() - 0.5) * 0.5 // a little turn, so no two are lined up perfectly
+
+            const piece = find('khamanPhysicalDynamic').clone(true)
+            piece.position.set(0, SURFACE, 0) // rest on the platter surface
+            khNodes.push(piece)
+            khPlace.push([ center.x + lx, center.z + lz, yaw ])
+
+            toppingNodes.forEach((node, i) =>
+            {
+                // Where this topping sits on the khaman, turned with the khaman, then moved to the khaman's place
+                const offset = new THREE.Vector3(node.position.x, 0, node.position.z).applyAxisAngle(yAxis, yaw)
+
+                const clone = node.clone(true)
+                clone.position.y = SURFACE + node.position.y // its own height above the platter
+                toppingBuckets[i].nodes.push(clone)
+                toppingBuckets[i].places.push([ center.x + lx + offset.x, center.z + lz + offset.z, yaw ])
+            })
+        }
+
+        this.khaman = this.addInstancedProps(khNodes, khPlace, {
+            // Light on purpose: at 0.2 the car stopped dead against them (it arrived at speed 7.9 and dropped to 0).
+            // At 0.06 it rolls straight through the dish and the khaman scatter ahead of it.
+            mass: 0.06, sleeping: true, friction: 0.6, restitution: 0.1, ccd: true
+        })
+
+        // Very light and asleep until something touches them. Group 2 = "topping": they collide with the
+        // khaman, the platter, the car and the ground, but not with each other (their boxes overlap a little).
+        const TOPPING_GROUP = (0x0002 << 16) | 0xFFFD
+        this.khamanToppings = toppingBuckets.map((bucket) =>
+            this.addInstancedProps(bucket.nodes, bucket.places, {
+                // angularDamping: a thrown leaf or chili stops turning instead of spinning on the ground forever
+                mass: 0.008, sleeping: true, friction: 0.25, restitution: 0.3, collisionGroups: TOPPING_GROUP, ccd: true, angularDamping: 4
+            })
+        )
+
+        // KEEP THE TOPPINGS AWAKE WHILE THEIR KHAMAN IS MOVING. Resting bodies fall asleep to save work, and
+        // an asleep body does not notice when what it sits on slides away: the topping would hang in the
+        // air. So every frame, if a khaman is really moving (it was hit, or its platter was pushed), we wake
+        // its toppings. Only while it MOVES: a khaman that has stopped lets its toppings go back to sleep
+        // too, otherwise they keep each other awake forever.
+        // (khamanToppings[kind].objects[k] is the "kind" of topping that belongs to khaman number k.)
+        this.khamanToppingsByPiece = this.khaman.objects.map((_, k) => this.khamanToppings.map((group) => group.objects[k]))
+
+        // Priority 4: right after the physics step (3), so the very next step already sees them awake
+        this.game.ticker.events.on('tick', () =>
+        {
+            this.khaman.objects.forEach((piece, k) =>
+            {
+                const body = piece.physical.body
+
+                if(body.isSleeping())
+                    return
+
+                const v = body.linvel()
+                const a = body.angvel()
+
+                if(Math.hypot(v.x, v.y, v.z) < 0.05 && Math.hypot(a.x, a.y, a.z) < 0.1)
+                    return
+
+                for(const topping of this.khamanToppingsByPiece[k])
+                    topping.physical.body.wakeUp()
+            })
+
+            // SAFETY NET: anything thrown out of the world (it would fall forever and stay awake) is switched
+            // off and hidden. Nobody can see a speck of onion that is 10 metres under the island.
+            for(const group of this.khamanToppings)
+            {
+                for(const object of group.objects)
+                {
+                    const body = object.physical.body
+
+                    if(body.isEnabled() && body.translation().y < - 4)
+                    {
+                        body.setEnabled(false)
+                        object.visual.object3D.scale.set(0, 0, 0)
+                        object.visual.object3D.needsUpdate = true
+                    }
+                }
+            }
+        }, 4)
+
+        this.keepClear.push({ x: center.x, z: center.z, radius: 9 })
     }
 
     // A box painted with one palette swatch.
