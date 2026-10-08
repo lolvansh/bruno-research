@@ -16,27 +16,19 @@ export class World
     {
         this.game = Game.getInstance()
 
-        // Circles where no trees may grow (landmarks and the bridge fill this in)
-        this.keepClear = [ { x: - 26, z: - 18, radius: 14 } ]
+        // Circles where no trees may grow (landmarks and the placeholders fill this in)
+        this.keepClear = []
 
         this.setFloor()
-        this.setTestBlocks()
+        this.setPlaceholders()
         this.setBenches()
         this.setFences()
-        this.setNamedShapes()
         this.setCableBridge()
         this.setLandmarks()
         this.setVehicle()
         this.setWater()
         this.setTrees()
         this.setGrass()
-        this.setBoxDropper()
-
-        // Priority 10: the dropper timer. (Nothing here must run before physics.)
-        this.game.ticker.events.on('tick', () =>
-        {
-            this.update()
-        }, 10)
     }
 
     // The car you see. It reads the physical car and copies it onto Bruno's model.
@@ -104,10 +96,10 @@ export class World
     {
         const nodes = this.game.resources.benchesModel.scene.children.filter((child) => child.name.startsWith('benchPhysical'))
 
-        // x, z, and which way each one faces (radians)
+        // x, z, and which way each one faces (radians). Scattered through the city on the south bank.
         const placements = [
-            [ -4, 6, 0 ], [ 4, 6, Math.PI * 0.5 ], [ -14, 6, Math.PI * 0.25 ], [ -8, -2, 0.3 ],
-            [ 10, -2, 2 ], [ -2, -8, 1 ], [ 16, -6, 4 ],
+            [ 6, -10, 0 ], [ -6, -12, Math.PI * 0.5 ], [ 16, -22, Math.PI * 0.25 ], [ 8, -26, 0.3 ],
+            [ -10, -22, 2 ], [ 2, -40, 1 ], [ -14, -32, 4 ],
         ]
 
         this.benches = this.addInstancedProps(nodes, placements, {
@@ -123,8 +115,8 @@ export class World
     {
         const nodes = this.game.resources.fencesModel.scene.children.filter((child) => child.name.startsWith('fencePhysical'))
 
-        // Two rows of 8 along Z, at x = 24 and x = 27, long side across the car's path
-        const placements = nodes.map((node, i) => [ 24 + Math.floor(i / 8) * 3, 3 + (i % 8) * 2.4, Math.PI * 0.5 ])
+        // Two rows of 8, a little pen on the south bank west of the plaza
+        const placements = nodes.map((node, i) => [ - 10 - Math.floor(i / 8) * 3, - 8 - (i % 8) * 2.4, Math.PI * 0.5 ])
 
         this.fences = this.addInstancedProps(nodes, placements, {
             friction: 0.7,
@@ -279,67 +271,20 @@ export class World
         return mesh
     }
 
-    // One model per collider type, to test the whole naming convention without Blender.
-    // Each is ADDED THE SAME WAY as the benches: addFromModel reads the names.
-    setNamedShapes()
-    {
-        const objects = this.game.objects
-        const identity = () => new THREE.Quaternion()
-
-        // trimesh: a ramp. The car must be able to DRIVE UP it: this is the same
-        // situation as the deck of your Cable Bridge.
-        // 6 corner points, and which three make each triangle:
-        const rampPoints = new Float32Array([ 0, 0, - 2,   8, 0, - 2,   8, 0, 2,   0, 0, 2,   8, 2, - 2,   8, 2, 2 ])
-        const rampTriangles = [ 0, 1, 2,  0, 2, 3,  1, 4, 5,  1, 5, 2,  0, 3, 5,  0, 5, 4,  0, 4, 1,  3, 2, 5 ]
-
-        const rampCollider = new THREE.BufferGeometry()
-        rampCollider.setAttribute('position', new THREE.Float32BufferAttribute(rampPoints, 3))
-        rampCollider.setIndex(rampTriangles)
-
-        // The visible ramp: same shape, but not indexed so every face is flat-shaded
-        const rampVisual = rampCollider.clone().toNonIndexed()
-        rampVisual.computeVertexNormals()
-        rampVisual.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(rampVisual.attributes.position.count * 2), 2))
-
-        const ramp = this.createNamedModel('rampPhysical', rampVisual, 15, [
-            { name: 'trimesh_ramp', scale: [ 1, 1, 1 ], geometry: rampCollider },
-        ])
-        objects.addFromModel(ramp, {}, { position: new THREE.Vector3(8, 0, 12), rotation: identity(), friction: 0.5 })
-
-        // tube: a round pillar. scale.y = height, scale.x = diameter.
-        const pillar = this.createNamedModel('pillarPhysical', new THREE.CylinderGeometry(0.8, 0.8, 4, 20), 4, [
-            { name: 'tube_pillar', scale: [ 1.6, 4, 1.6 ] },
-        ])
-        objects.addFromModel(pillar, {}, { position: new THREE.Vector3(- 6, 2, 24), rotation: identity() })
-
-        // ball: a bouncy boulder you can push. "Dynamic" in the name, and a custom
-        // property (restitution) on the collider child, exactly like a Blender custom property.
-        const boulder = this.createNamedModel('boulderPhysicalDynamic', new THREE.SphereGeometry(1, 20, 14), 20, [
-            { name: 'ball_boulder', scale: [ 2, 2, 2 ], userData: { restitution: 0.7 } },
-        ])
-        objects.addFromModel(boulder, {}, { position: new THREE.Vector3(6, 3, 22), rotation: identity(), mass: 0.4 })
-
-        // hull: a rock. The collider wraps the same points as the visible rock.
-        const rock = this.createNamedModel('rockPhysicalDynamic', new THREE.DodecahedronGeometry(1.2), 13, [
-            { name: 'hull_rock', scale: [ 1, 1, 1 ], geometry: new THREE.DodecahedronGeometry(1.2) },
-        ])
-        objects.addFromModel(rock, {}, { position: new THREE.Vector3(- 14, 3, 20), rotation: identity(), mass: 0.3 })
-    }
-
     // Surat's Cable Bridge (a toy version, made by resources/make_cable_bridge.py).
     // The model is ONE node named "cableBridgePhysical" with box and hull children: the same
     // naming convention as the benches, so addFromModel builds the physics from the names.
-    // It crosses the pond to the north-west, with the road running along the pond's edge direction.
+    // It crosses the river at x = 0, its road running north-south (the only way to the far bank).
     setCableBridge()
     {
         const model = this.game.resources.cableBridgeModel.scene.children.find((child) => child.name.startsWith('cableBridgePhysical'))
 
-        // The model's own x axis is the road. Turn it to run across the pond (pond centre: -26, -18).
-        const angle = Math.atan2(28, 32) + Math.PI * 0.5
-        const rotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), - angle)
+        // The model's own x axis is the road. Turn it a quarter so the road runs along game z (north-south),
+        // across the east-west river.
+        const rotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), - Math.PI * 0.5)
 
         this.cableBridge = this.game.objects.addFromModel(model, {}, {
-            position: new THREE.Vector3(- 26, 0, - 18),
+            position: new THREE.Vector3(0, 0, this.game.terrain.riverCenterAt(0)),
             rotation: rotation,
             friction: 0.7
         })
@@ -360,13 +305,18 @@ export class World
         const nodes = this.game.resources.landmarksModel.scene.children
         const centre = this.game.terrain.island
 
+        // SOUTH BANK = the city (near the spawn). FAR BANK (z > 20) = across the cable bridge.
+        // X matches the hand-drawn map: the city buildings on the left, the empty/east spots on the right.
+        // Positions sit just OFF the roads (you drive up to them), except the Gate, which the road runs through.
         const places = [
-            { name: 'vrSurat',            x: 36,    z: 14,    radius: 6 },  // Vesu / Piplod: the big mall
-            { name: 'rahulRajMall',       x: 24,    z: 32,    radius: 5 },  // Piplod: the tall glass tower
-            { name: 'athwaGate',          x: 16,    z: 30,    radius: 7 },  // Athwa: drive through the arch
-            { name: 'scienceCentre',      x: -16,   z: 32,    radius: 6 },  // City Light: the dome
-            { name: 'dumasBeach',         x: 22.9,  z: -34.9, radius: 7 },  // Dumas: sign, umbrellas, lifeguard tower
-            { name: 'dariyaGaneshTemple', x: 1.3,   z: -23.7, radius: 5 },  // Dumas: the seaside temple
+            // South bank
+            { name: 'vrSurat',            x: 38.2, z: - 18.2, radius: 6 },  // Vesu / Piplod: the big mall
+            { name: 'rahulRajMall',       x: 14.7, z: - 29.7, radius: 5 },  // Piplod: the tall glass tower
+            { name: 'dumasBeach',         x: 40.3, z: - 29,   radius: 7 },  // Dumas: sign, umbrellas, lifeguard tower
+            // Far bank (the other side of the bridge)
+            { name: 'athwaGate',          x: 0,    z: 26,     radius: 7 },  // Athwa: drive through the arch, straight off the bridge
+            { name: 'scienceCentre',      x: 26,   z: 32,     radius: 6 },  // City Light: the dome
+            { name: 'dariyaGaneshTemple', x: - 26, z: 28,     radius: 5 },  // Dumas: the seaside temple
         ]
 
         this.landmarks = {}
@@ -441,52 +391,37 @@ export class World
         this.floor = new Floor()
     }
 
-    // TEMPORARY: a few coloured blocks, solid, so you have things to drive around and bump into
-    setTestBlocks()
+    // MAP v1 PLACEHOLDERS (the boxes on the hand-drawn map).
+    //  - Labelled spots I have no model for yet (tea stall, locho house, airport): one tall block each,
+    //    in a warm colour, so the spot is reserved. These become real models later.
+    //  - The map's blank boxes: a little stack of plain cubes ("just put cubes there").
+    setPlaceholders()
     {
-        this.addBlock([ 4, 2, 4 ], [ -12, 1, -6 ], 1, 'fixed') // cream
-        this.addBlock([ 3, 3, 3 ], [ 14, 1.5, 8 ], 14, 'fixed') // terracotta
-        this.addBlock([ 6, 1.5, 2 ], [ -6, 0.75, 14 ], 3, 'fixed') // sky blue
-        this.addBlock([ 2, 2, 2 ], [ 8, 1, -14 ], 8, 'fixed') // yellow
-        this.addBlock([ 1, 4, 1 ], [ 0, 2, 0 ], 19, 'fixed') // crimson pillar in the middle
-    }
+        // Reserved building spots (south bank, among the city). [x, z, size]
+        const buildings = [
+            { name: 'teaStall',   x: 23.8, z: 0.8,   size: [ 3, 3, 3 ],   palette: 7 },  // peach
+            { name: 'lochoHouse', x: 12.5, z: - 17.1, size: [ 4, 3.5, 4 ], palette: 8 },  // yellow
+            { name: 'airport',    x: 22,   z: - 30.5, size: [ 7, 2.5, 5 ], palette: 4 },  // light grey terminal
+        ]
 
-    // TEMPORARY: rain boxes on the world so you can watch the physics work
-    // and push them around with the car.
-    setBoxDropper()
-    {
-        this.dropped = 0
-        this.maxDropped = 20
-        this.dropTimer = 0
-        this.dropPalette = [ 1, 3, 8, 14, 18, 20, 21 ] // swatches to pick from
-    }
+        this.placeholders = {}
 
-    dropBox()
-    {
-        const size = 0.8 + Math.random() * 0.6
-
-        // A random starting tilt, so they land messily
-        const rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random() * 3, Math.random() * 3, Math.random() * 3))
-
-        this.addBlock(
-            [ size, size, size ],
-            [ (Math.random() - 0.5) * 16, 8 + Math.random() * 4, (Math.random() - 0.5) * 16 ],
-            this.dropPalette[Math.floor(Math.random() * this.dropPalette.length)],
-            'dynamic',
-            rotation
-        )
-
-        this.dropped++
-    }
-
-    update()
-    {
-        // One new box every half second, up to the limit
-        this.dropTimer += this.game.ticker.delta
-        if(this.dropTimer > 0.5 && this.dropped < this.maxDropped)
+        for(const b of buildings)
         {
-            this.dropTimer = 0
-            this.dropBox()
+            this.placeholders[b.name] = this.addBlock(b.size, [ b.x, b.size[1] / 2, b.z ], b.palette, 'fixed')
+            this.keepClear.push({ x: b.x, z: b.z, radius: Math.max(b.size[0], b.size[2]) * 0.5 + 3 })
+        }
+
+        // The map's blank boxes: a stack of three plain cubes at each spot
+        const cubeSpots = [ [ - 18, - 10 ], [ - 21, - 34.3 ], [ - 34, 24 ], [ - 38.3, - 23 ] ]
+
+        for(const [ x, z ] of cubeSpots)
+        {
+            this.addBlock([ 2, 2, 2 ], [ x, 1, z ], 6, 'fixed')
+            this.addBlock([ 1.4, 1.4, 1.4 ], [ x + 1.2, 0.7, z + 0.6 ], 20, 'fixed')
+            this.addBlock([ 1.2, 1.2, 1.2 ], [ x - 0.4, 0.6, z - 1.3 ], 21, 'fixed')
+            this.keepClear.push({ x, z, radius: 5 })
         }
     }
+
 }

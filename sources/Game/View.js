@@ -20,6 +20,7 @@ export class View
         this.setZoom()
         this.setSpherical()
         this.setCamera()
+        this.setMapView()
 
         // Priority 7: after the player has moved (6), before drawing (998)
         this.game.ticker.events.on('tick', () =>
@@ -57,9 +58,39 @@ export class View
 
         this.game.inputs.events.on('zoom', (action) =>
         {
-            // Scroll down (positive value) = zoom out
+            // Scroll down (positive value) = zoom out. In map mode the wheel zooms the map instead.
+            if(this.map && this.map.active)
+            {
+                this.map.ratio = THREE.MathUtils.clamp(this.map.ratio - action.value * 0.06, 0, 1)
+                return
+            }
+
             this.zoom.baseRatio -= action.value * this.zoom.sensitivity
             this.zoom.baseRatio = THREE.MathUtils.clamp(this.zoom.baseRatio, 0, 1)
+        })
+    }
+
+    // TOP-DOWN MAP VIEW (press M). The camera jumps straight overhead and looks down, so you can
+    // see the whole island like the hand-drawn map. The mouse wheel zooms in and out.
+    // `ratio` 0 = see the whole island, 1 = zoomed right in. It follows the car, so M also works as a minimap.
+    setMapView()
+    {
+        this.map = {}
+        this.map.active = false
+        this.map.ratio = 0.3 // Start fairly far out
+        this.map.heightEdges = { min: 90, max: 360 } // Camera height for ratio 1 and 0
+        this.map.smoothedCenter = new THREE.Vector3()
+        this.map.smoothedHeight = THREE.MathUtils.lerp(this.map.heightEdges.max, this.map.heightEdges.min, this.map.ratio)
+
+        this.game.inputs.addActions([
+            { name: 'mapView', categories: [ 'wandering' ], keys: [ 'Keyboard.KeyM' ] },
+        ])
+
+        this.game.inputs.events.on('mapView', (action) =>
+        {
+            // Fires on press AND release; only toggle on the press
+            if(action.active)
+                this.map.active = !this.map.active
         })
     }
 
@@ -87,14 +118,34 @@ export class View
 
     setCamera()
     {
-        // 25 degrees is a narrow field of view: flatter, more "miniature diorama" look
-        this.camera = new THREE.PerspectiveCamera(25, this.game.viewport.ratio, 0.1, 200)
+        // 25 degrees is a narrow field of view: flatter, more "miniature diorama" look.
+        // The far plane reaches 600 so the high overhead map view still sees the ground.
+        this.camera = new THREE.PerspectiveCamera(25, this.game.viewport.ratio, 0.1, 600)
         this.game.scene.add(this.camera)
     }
 
     update()
     {
         const delta = this.game.ticker.delta
+
+        // MAP VIEW: straight overhead, looking down, following the car. The wheel sets the height.
+        if(this.map.active)
+        {
+            const target = this.focusPoint.trackedPosition
+            const targetHeight = THREE.MathUtils.lerp(this.map.heightEdges.max, this.map.heightEdges.min, this.map.ratio)
+
+            this.map.smoothedCenter.lerp(target, Math.min(1, delta * 8))
+            this.map.smoothedHeight = THREE.MathUtils.lerp(this.map.smoothedHeight, targetHeight, Math.min(1, delta * 8))
+
+            this.camera.position.set(this.map.smoothedCenter.x, this.map.smoothedHeight, this.map.smoothedCenter.z)
+            this.camera.up.set(0, 0, 1) // +z (the far bank) points up the screen, like the drawn map
+            this.camera.lookAt(this.map.smoothedCenter.x, 0, this.map.smoothedCenter.z)
+            this.camera.updateMatrixWorld()
+            return
+        }
+
+        // Leaving map view: put the camera's up vector back for the normal angled view
+        this.camera.up.set(0, 1, 0)
 
         // Focus point: move a fraction of the remaining distance each frame.
         // Far away = big step, close = tiny step. That is the "easing".

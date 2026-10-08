@@ -28,13 +28,42 @@ export class Terrain
         this.textureSize = 256 // The map image is 256 x 256 pixels
         this.depthScale = 1.5 // How far the sea floor sinks below the land
 
-        // Where the island is, and what is on it
-        this.island = { x: 6, z: 10 }
-        this.ponds = [
-            { x: - 26, z: - 18, radius: 4 }, // The bridge crosses this one, so it is small
-            { x: 44, z: 40, radius: 6 },
+        // Where the island is, and what is on it. The city sits on the SOUTH bank (lower z),
+        // the river runs east-west through the middle, and the far bank (higher z) is across the bridge.
+        this.island = { x: 0, z: - 14 }
+        this.ponds = []
+
+        // The Tapi: an east-west river. riverCenterAt(x) is its wavy middle line; the only way
+        // across is the cable bridge (at x = 0), so the far bank can only be reached by crossing it.
+        // halfWidth 4 keeps the water band (~14 wide) just narrow enough for the bridge to span.
+        this.river = { centerZ: 8, halfWidth: 4, depth: 0.7 }
+
+        // ROADS (the red/paving channel, like Bruno's hand-painted paths). Each road is a list of
+        // [x, z] points joined by straight strips. Over the river the paving vanishes, so the bridge
+        // is the crossing. Positions match the landmarks in World.js.
+        this.roadHalfWidth = 1.5
+        this.roads = [
+            // FAR BANK: the bridge spine up to the Athwa Gate, then branching to the two models
+            [ [ 0, 16 ], [ 0, 26 ] ],
+            [ [ 0, 18 ], [ 22, 30 ] ],   // -> up to (not into) the Science Centre
+            [ [ 0, 18 ], [ - 22, 26 ] ], // -> up to (not into) the temple
+
+            // SOUTH BANK road network (follows the hand-drawn red loops). All feed the central junction,
+            // which the bridge spine connects to the far bank.
+            [ [ 0, 0 ], [ 0, - 10 ] ],   // bridge spine down to the central junction
+
+            // Outer perimeter loop around the whole south bank
+            [ [ 6, - 2 ], [ 40, - 6 ], [ 50, - 20 ], [ 44, - 40 ], [ 22, - 50 ], [ - 6, - 52 ], [ - 32, - 44 ], [ - 44, - 22 ], [ - 34, - 6 ], [ - 8, - 3 ], [ 6, - 2 ] ],
+            [ [ 0, - 2 ], [ 6, - 2 ] ], [ [ 0, - 2 ], [ - 8, - 3 ] ], // junction -> outer loop
+
+            // Two inner loops (the figure-of-eight)
+            [ [ 0, - 10 ], [ 22, - 12 ], [ 34, - 24 ], [ 24, - 40 ], [ 4, - 42 ], [ - 4, - 28 ], [ 0, - 10 ] ],
+            [ [ 0, - 10 ], [ - 16, - 16 ], [ - 30, - 26 ], [ - 22, - 42 ], [ - 4, - 44 ], [ 4, - 28 ], [ 0, - 10 ] ],
+
+            // Diagonal cross-connectors, so the loops cross like the drawing
+            [ [ 40, - 10 ], [ - 22, - 40 ] ],
+            [ [ - 30, - 12 ], [ 28, - 44 ] ],
         ]
-        this.pathAngles = [ - 0.5, 1.9, 3.7 ] // Directions the three paths leave the plaza (radians)
 
         this.noise = createNoise(7)
 
@@ -48,6 +77,41 @@ export class Terrain
         const t = Math.min(Math.max((x - edge0) / (edge1 - edge0), 0), 1)
 
         return t * t * (3 - 2 * t)
+    }
+
+    // The z of the river's wavy centre line at a given x. The bridge is placed on it.
+    riverCenterAt(x)
+    {
+        return this.river.centerZ + Math.sin(x * 0.035) * 5 + (this.noise.fbm(x * 0.06 + 40, 7, 2) - 0.5) * 4
+    }
+
+    // Shortest distance from point (px, pz) to the line segment a-b
+    static distanceToSegment(px, pz, ax, az, bx, bz)
+    {
+        const dx = bx - ax
+        const dz = bz - az
+        const lengthSq = dx * dx + dz * dz
+        let t = lengthSq > 0 ? ((px - ax) * dx + (pz - az) * dz) / lengthSq : 0
+        t = Math.max(0, Math.min(1, t))
+
+        return Math.hypot(px - (ax + t * dx), pz - (az + t * dz))
+    }
+
+    // How "on a road" is this point? 1 on the centre line, fading to 0 just past the edge.
+    roadAt(x, z)
+    {
+        let road = 0
+
+        for(const line of this.roads)
+        {
+            for(let i = 0; i < line.length - 1; i++)
+            {
+                const d = Terrain.distanceToSegment(x, z, line[i][0], line[i][1], line[i + 1][0], line[i + 1][1])
+                road = Math.max(road, 1 - Terrain.smoothstep(this.roadHalfWidth, this.roadHalfWidth + 0.9, d))
+            }
+        }
+
+        return road
     }
 
     // THE MAP, as a function: what is at world position (x, z)?
@@ -74,27 +138,21 @@ export class Terrain
             depth = Math.max(depth, pondDepth)
         }
 
-        // Paving, part 1: a round plaza in the middle (our playground is on it)
-        const plaza = 1 - smoothstep(25, 31, distance + (noise.fbm(x * 0.08 + 9, z * 0.08 + 9, 2) - 0.5) * 7)
+        // The river: a band of water around its wavy centre line. Deep in the middle, shelving to the banks.
+        const river = this.river
+        const riverDistance = Math.abs(z - this.riverCenterAt(x))
+        const riverDepth = (1 - smoothstep(river.halfWidth - 2, river.halfWidth + 3, riverDistance)) * river.depth
 
-        // Paving, part 2: three winding paths leaving the plaza.
-        // For each: how far sideways is this point from the path's centre line?
-        let paths = 0
+        depth = Math.max(depth, riverDepth)
 
-        this.pathAngles.forEach((pathAngle, i) =>
-        {
-            const wiggle = Math.sin(distance * 0.09 + i * 2) * 0.22
-            let delta = angle - pathAngle - wiggle
-            delta = Math.atan2(Math.sin(delta), Math.cos(delta)) // Wrap into -PI..PI
+        // Paving, part 1: a small paved patch around the spawn (the island centre)
+        const plaza = 1 - smoothstep(4, 7, distance + (noise.fbm(x * 0.08 + 9, z * 0.08 + 9, 2) - 0.5) * 3)
 
-            const sideways = Math.abs(delta) * distance // Angle times radius = distance in world units
-            const along = smoothstep(20, 26, distance) * (1 - smoothstep(50, 58, distance)) // Only between plaza and shore
-
-            paths = Math.max(paths, (1 - smoothstep(1.8, 2.8, sideways)) * along)
-        })
+        // Paving, part 2: the roads (the drawn road loop + the spine to the bridge)
+        const roads = this.roadAt(x, z)
 
         const dryness = 1 - smoothstep(0, 0.05, depth) // 1 on dry land, 0 in water
-        const paving = Math.max(plaza, paths) * dryness
+        const paving = Math.max(plaza, roads) * dryness
 
         // Grass: patches where a slow noise is high. Not on paving, not in water.
         const grassNoise = noise.fbm(x * 0.055 + 20, z * 0.055 + 20, 4)

@@ -21,8 +21,9 @@ export class Player
         // Order is the same as the physical wheels: front right, front left, back right, back left.
         this.suspensions = [ 'low', 'low', 'low', 'low' ]
 
-        // Where the car appears, and drops back to when you press R
-        this.spawn = { position: new THREE.Vector3(0, 3, 12), rotation: 0 }
+        // Where the car appears, and drops back to when you press R: on the city plaza (south bank),
+        // facing north (+Z) toward the river and the cable bridge.
+        this.spawn = { position: new THREE.Vector3(0, 3, - 14), rotation: - Math.PI * 0.5 }
 
         this.setInputs()
         this.setUnstuck()
